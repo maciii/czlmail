@@ -975,6 +975,20 @@ export function MailShell({ onSignedOut }: { onSignedOut: () => void }) {
     [withDetail, setDraft, archiveIds, trashIds, moveIds, junkIds, markReadIds, toggleFlag, togglePin, setLabelIds],
   );
 
+  /**
+   * 单封标为未读之后关闭阅读栏, 否则停留在这封上会被再次自动标记已读。
+   * 设置为「从不（手动标记）」时没有自动标记, 邮件留在原处, 可以接着用键盘操作。
+   */
+  const leaveAfterUnread = useCallback((key: string) => {
+    api
+      .getSettings()
+      .then((s) => s?.markRead ?? "immediate")
+      .catch(() => "immediate")
+      .then((mode) => {
+        if (mode !== "never") setSelectedKey((cur) => (cur === key ? "" : cur));
+      });
+  }, []);
+
   // 阅读栏打开的邮件; 统一视图里它的账号不一定是 accountId。
   const actionsFor = useCallback(
     (email: EmailDetail): ToolbarActions => {
@@ -1007,8 +1021,7 @@ export function MailShell({ onSignedOut }: { onSignedOut: () => void }) {
         },
         markUnread: () => {
           markReadIds([key], false);
-          // 标为未读后关闭阅读栏，否则停留在这封上会被再次自动标记已读。
-          setSelectedKey("");
+          leaveAfterUnread(key);
         },
         toggleFlag: () => toggleFlag(email),
         print: () => printEmail(email, false),
@@ -1027,7 +1040,7 @@ export function MailShell({ onSignedOut }: { onSignedOut: () => void }) {
         toggleBodyLight: () => setBodyAppearance(bodyAppearance === "light" ? "follow" : "light"),
       };
     },
-    [archiveIds, trashIds, moveIds, setLabelIds, junkIds, markReadIds, toggleFlag, importEmails, bodyAppearance, setBodyAppearance, setDraft],
+    [archiveIds, trashIds, moveIds, setLabelIds, junkIds, markReadIds, leaveAfterUnread, toggleFlag, importEmails, bodyAppearance, setBodyAppearance, setDraft],
   );
 
   /* ---------- 键盘快捷键 ---------- */
@@ -1071,8 +1084,7 @@ export function MailShell({ onSignedOut }: { onSignedOut: () => void }) {
         if (!target) return;
         const value = read === "toggle" ? target.unread : read;
         markReadIds(target.keys, value);
-        // 与工具栏的「标为未读」一致: 单封标为未读后关闭阅读栏, 免得停留其上又被自动标记已读。
-        if (!value && !target.batch) setSelectedKey("");
+        if (!value && !target.batch) leaveAfterUnread(target.keys[0]);
       };
 
       const general: Partial<Record<ShortcutAction, () => void>> = {
@@ -1112,7 +1124,7 @@ export function MailShell({ onSignedOut }: { onSignedOut: () => void }) {
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [emails, selectedKey, checked, focusMode, currentKind, actionsFor, markReadIds, setDraft]);
+  }, [emails, selectedKey, checked, focusMode, currentKind, actionsFor, markReadIds, leaveAfterUnread, setDraft]);
 
 
   // 多选都属于同一个账号时的账号 id, 否则为空(跨账号没有共同的目标文件夹)。
