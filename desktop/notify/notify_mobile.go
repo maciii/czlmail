@@ -36,7 +36,7 @@ func Activated(actionID string) {
 
 type iosNotifier struct{}
 
-func New(context.Context) (Notifier, error) { return iosNotifier{}, nil }
+func New(context.Context, App) (Notifier, error) { return iosNotifier{}, nil }
 
 func (iosNotifier) Notify(_ context.Context, n Notification) error {
 	native.mu.Lock()

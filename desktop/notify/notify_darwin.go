@@ -37,7 +37,7 @@ const actionKey = "action"
 const defaultAction = "DEFAULT_ACTION"
 
 // New 初始化通知中心。ctx 必须是 Wails OnStartup 收到的那个。
-func New(ctx context.Context) (Notifier, error) {
+func New(ctx context.Context, _ App) (Notifier, error) {
 	n := &darwinNotifier{ctx: ctx}
 	if err := runtime.InitializeNotifications(ctx); err != nil {
 		// 退回 osascript, 不算失败: 有通知总比没有好。
