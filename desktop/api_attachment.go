@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/woodchen-ink/czlmail/desktop/internal/imgcache"
 )
 
 // 附件: 预览、保存、上传。
@@ -62,10 +64,17 @@ func (a *App) serveBlob(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "download failed", http.StatusBadGateway)
 			return
 		}
+		// 类型以内容为准: 有的发件方把正文图片标成 application/octet-stream,
+		// 界面只能按文件名猜成图片。猜错了(内容不是图片)就不当图片返回。
+		sniffed := imgcache.ImageType(data, "")
+		if !previewableTypes[sniffed] {
+			http.Error(w, "not an image", http.StatusUnsupportedMediaType)
+			return
+		}
 		h := w.Header()
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Cache-Control", noStore)
-		h.Set("Content-Type", contentType)
+		h.Set("Content-Type", sniffed)
 		h.Set("Content-Security-Policy", "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'")
 		w.Write(data)
 		return
