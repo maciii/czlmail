@@ -19,6 +19,7 @@ import { isNative } from "@/lib/native-bridge";
 import { clearAvatarCache } from "@/lib/avatar-cache";
 import { primaryPersonal, useAccounts as useAllAccounts } from "@/lib/account-features";
 import { accountName, useAccountLooks } from "@/lib/account-looks";
+import { czechLayout, setCzechLayout, type CzechLayout } from "@/lib/keyboard-layout";
 
 export function AppearanceSection({ active }: { active: boolean }) {
   useI18n();
@@ -308,6 +309,8 @@ export function ComposeSection({ active }: { active: boolean }) {
             onCheckedChange={(on) => save({ readReceiptDefault: on })}
           />
         </Row>
+        <Divider />
+        <CzechKeyboardRow />
       </Card>
       <SectionTitle title={t("发送前检查")} small />
       <Card>
@@ -324,5 +327,27 @@ export function ComposeSection({ active }: { active: boolean }) {
         </Row>
       </Card>
     </>
+  );
+}
+
+/** Which Czech layout the keyboard layout fix in the editor assumes (Ctrl+Shift+K); stored on this machine. */
+function CzechKeyboardRow() {
+  useI18n();
+  const [layout, setLayout] = useState<CzechLayout>(czechLayout);
+  return (
+    <Row title={t("捷克语键盘")} desc={t("修正用错键盘布局输入的文字（Ctrl+Shift+K）时按这个布局换算")}>
+      <OptionSelect
+        value={layout}
+        onChange={(v) => {
+          const next = v === "qwerty" ? "qwerty" : "qwertz";
+          setCzechLayout(next);
+          setLayout(next);
+        }}
+        options={[
+          ["qwertz", "QWERTZ"],
+          ["qwerty", "QWERTY"],
+        ]}
+      />
+    </Row>
   );
 }

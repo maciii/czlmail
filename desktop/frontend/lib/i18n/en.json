@@ -1528,5 +1528,12 @@
   "列出筛选文件夹及其条件与邮件数": "List smart folders with their conditions and message counts",
   "列出某个筛选文件夹里的邮件": "List the messages in a smart folder",
   "修改筛选文件夹的名称与条件": "Change a smart folder's name and conditions",
-  "删除筛选文件夹（邮件不受影响）": "Delete a smart folder (messages are not affected)"
+  "删除筛选文件夹（邮件不受影响）": "Delete a smart folder (messages are not affected)",
+  "修正": "Fix",
+  "修正键盘布局": "Fix keyboard layout",
+  "修正用错键盘布局输入的文字（选中的文字；未选中时为光标前打错的词）": "Fix text typed with the wrong keyboard layout (the selection, or the mistyped words before the cursor)",
+  "这段文字像是用错了键盘布局：": "This looks like it was typed with the wrong keyboard layout:",
+  "本封邮件不再提示": "Don't suggest again in this message",
+  "捷克语键盘": "Czech keyboard",
+  "修正用错键盘布局输入的文字（Ctrl+Shift+K）时按这个布局换算": "Layout used to fix text typed with the wrong keyboard layout (Ctrl+Shift+K)"
 }
