@@ -1,6 +1,6 @@
 "use client";
 
-import { dateLocale, t } from "@/lib/i18n";
+import { dateLocale, getLocale, t } from "@/lib/i18n";
 import { useI18n } from "@/components/locale-provider";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -25,6 +25,8 @@ import { toast } from "sonner";
 
 import { RichEditor } from "@/components/compose/rich-editor";
 import { SpellLanguageButton, SpellMenu, useSpellcheck } from "@/components/compose/spellcheck-ui";
+import { fixKeyboardLayout, isKeyboardFixShortcut, KeyboardFixButton, KeyboardFixHint } from "@/components/compose/keyboard-fix";
+import { czechLayoutSetting } from "@/lib/keyboard-layout";
 import { RecipientInput } from "@/components/recipient-input";
 import {
   AlertDialog,
@@ -67,7 +69,7 @@ import {
 } from "@/lib/api";
 import { fileSize } from "@/lib/format";
 import { isSendShortcut, sendShortcutText } from "@/lib/shortcuts";
-import { htmlToText, isHtmlEmpty, sanitizeInline, textToHtml } from "@/lib/html";
+import { editorHtmlToEmail, htmlToText, isHtmlEmpty, sanitizeInline, textToEditorHtml, textToHtml } from "@/lib/html";
 import { allowDraftLeave, hasDraftContent } from "@/lib/draft-transition";
 import { onFileDrop } from "@/lib/file-drop";
 import { main, store } from "@/wailsjs/go/models";
@@ -178,8 +180,10 @@ export function ComposePane({ accountId, draft, onClose, onSent, leaveRef, sourc
   const [intent, setIntent] = useState("");
 
   const editorRef = useRef<Editor | null>(null);
-  // The same editor as state, for the parts that render from it (keyboard layout fix).
+  // 同一个编辑器再存一份 state, 给按它渲染的部分 (键盘布局纠正) 用。
   const [editor, setEditor] = useState<Editor | null>(null);
+  // 键盘布局纠正只对捷克语用户有用, 设置里关着 (非捷克语界面的默认) 时不出现。每次渲染读一次, 设置改了下次渲染生效。
+  const keyboardFix = czechLayoutSetting(getLocale()) !== "off";
   const spell = useSpellcheck(editor);
   // 打开写信面板时光标落在第一个空着的地方, 不用先点鼠标: 新邮件、转发 → 收件人,
   // 从通讯录写信 → 主题, 回复 → 正文开头 (引用在下面)。
@@ -227,6 +231,14 @@ export function ComposePane({ accountId, draft, onClose, onSent, leaveRef, sourc
   const editRevision = useRef(0);
   const saving = useRef<Promise<boolean> | null>(null);
   const aiAbort = useRef<AbortController | null>(null);
+  // 保存是"建新删旧": 旧草稿删掉后, 它的部件 blob 在有的服务器 (czlmail-gateway) 上随之失效。
+  // 这里记下每次保存后附件换成的新 blob, 之后的保存与发送都改用新的 (state 可能还没更新, 闭包里是旧值)。
+  const movedBlobs = useRef(new Map<string, string>());
+  const currentBlob = (blobId: string) => {
+    let id = blobId;
+    for (let i = 0; i < 32 && movedBlobs.current.has(id); i++) id = movedBlobs.current.get(id)!;
+    return id;
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -307,7 +319,7 @@ export function ComposePane({ accountId, draft, onClose, onSent, leaveRef, sourc
   }, []);
 
   function buildRequest(): main.ComposeRequest {
-    const parts = [html];
+    const parts = [editorHtmlToEmail(html)];
     if (signatureHtml) parts.push((separator ? "<p>-- </p>" : "") + `<div class="signature">${signatureHtml}</div>`);
     if (draft.quoteHtml) parts.push(sanitizeInline(draft.quoteHtml));
     const fullHtml = parts.join("");
@@ -323,8 +335,8 @@ export function ComposePane({ accountId, draft, onClose, onSent, leaveRef, sourc
       inReplyTo: draft.inReplyTo ?? "",
       references: draft.references ?? [],
       attachments: [
-        ...attachments.map((a) => ({ blobId: a.blobId, type: a.type, name: a.name, cid: "" })),
-        ...inlineParts.map((p) => ({ blobId: p.blobId, type: p.type, name: p.name, cid: p.cid })),
+        ...attachments.map((a) => ({ blobId: currentBlob(a.blobId), type: a.type, name: a.name, cid: "" })),
+        ...inlineParts.map((p) => ({ blobId: currentBlob(p.blobId), type: p.type, name: p.name, cid: p.cid })),
       ],
       draftId: draftId.current,
       draftAccountId: draftAccount.current,
@@ -333,6 +345,19 @@ export function ComposePane({ accountId, draft, onClose, onSent, leaveRef, sourc
       sendSeparately: separately,
       sign: canSign && sign,
     });
+  }
+
+  /** 保存后附件改指向新草稿里的部件; 与 req.attachments 一一对应。不算改动, 不触发再次保存。 */
+  function rebindBlobs(sent: main.AttachmentRef[], saved: main.AttachmentRef[]) {
+    const moved = new Map<string, string>();
+    sent.forEach((a, i) => {
+      const next = saved[i]?.blobId;
+      if (a.blobId && next && next !== a.blobId) moved.set(a.blobId, next);
+    });
+    if (moved.size === 0) return;
+    for (const [from, to] of moved) movedBlobs.current.set(from, to);
+    setAttachments((prev) => prev.map((a) => ({ ...a, blobId: currentBlob(a.blobId) })) as UploadedAttachment[]);
+    setInlineParts((prev) => prev.map((p) => ({ ...p, blobId: currentBlob(p.blobId) })));
   }
 
   const hasContent = hasDraftContent(to, cc, bcc, subject, !isHtmlEmpty(html), attachments.length);
@@ -349,8 +374,10 @@ export function ComposePane({ accountId, draft, onClose, onSent, leaveRef, sourc
       await prev;
       try {
         const req = buildRequest();
-        draftId.current = await api.saveDraft(req);
+        const saved = await api.saveDraftRefs(req);
+        draftId.current = saved.draftId;
         draftAccount.current = req.accountId;
+        rebindBlobs(req.attachments ?? [], saved.attachments ?? []);
         return true;
       } catch (err) {
         dirty.current = true;
@@ -461,7 +488,7 @@ export function ComposePane({ accountId, draft, onClose, onSent, leaveRef, sourc
       const recipient = parseAddresses(to)[0];
       const fill = await api.applyTemplate(template.id, {}, recipient?.name || "");
       if (fill.subject && !subject.trim()) setSubject(fill.subject);
-      const body = fill.isHtml ? fill.body : textToHtml(fill.body);
+      const body = fill.isHtml ? fill.body : textToEditorHtml(fill.body);
       editorRef.current?.commands.setContent(body + (isHtmlEmpty(html) ? "" : html));
       if (!to.trim() && fill.to?.length) setTo(fill.to.join(", "));
       if (!cc.trim() && fill.cc?.length) {
@@ -562,7 +589,7 @@ export function ComposePane({ accountId, draft, onClose, onSent, leaveRef, sourc
 
   function applyAI(mode: "replace" | "insert") {
     if (!aiPanel || !editorRef.current) return;
-    const generated = textToHtml(aiPanel.text.trim());
+    const generated = textToEditorHtml(aiPanel.text.trim());
     if (mode === "replace") editorRef.current.commands.setContent(generated, { emitUpdate: true });
     else editorRef.current.chain().focus().insertContent(generated).run();
     markDirty();
@@ -628,8 +655,8 @@ export function ComposePane({ accountId, draft, onClose, onSent, leaveRef, sourc
     // 正在进行的保存用的是原账号, 等它落地, 草稿 id 与所在账号才对得上。
     await saving.current;
     const refs = [
-      ...attachments.map((a) => main.AttachmentRef.createFrom({ blobId: a.blobId, type: a.type, name: a.name, cid: "" })),
-      ...inlineParts.map((p) => main.AttachmentRef.createFrom({ blobId: p.blobId, type: p.type, name: p.name, cid: p.cid })),
+      ...attachments.map((a) => main.AttachmentRef.createFrom({ blobId: currentBlob(a.blobId), type: a.type, name: a.name, cid: "" })),
+      ...inlineParts.map((p) => main.AttachmentRef.createFrom({ blobId: currentBlob(p.blobId), type: p.type, name: p.name, cid: p.cid })),
     ];
     if (refs.length > 0) {
       setUploading(true);
@@ -659,6 +686,11 @@ export function ComposePane({ accountId, draft, onClose, onSent, leaveRef, sourc
       }}
       onDrop={() => setDragging(false)}
       onKeyDown={(e) => {
+        if (keyboardFix && editor && isKeyboardFixShortcut(e.nativeEvent) && editor.view.dom.contains(e.target as Node)) {
+          e.preventDefault();
+          fixKeyboardLayout(editor);
+          return;
+        }
         // 只认面板里的按键: 弹窗经 portal 渲染, React 事件也会冒泡到这里。
         if (!isSendShortcut(e.nativeEvent) || !rootRef.current?.contains(e.target as Node)) return;
         e.preventDefault();
@@ -778,6 +810,7 @@ export function ComposePane({ accountId, draft, onClose, onSent, leaveRef, sourc
             content={draft.html}
             placeholder={t("正文")}
             className="shrink-0"
+            stickyToolbar
             onReady={(e) => {
               editorRef.current = e;
               setEditor(e);
@@ -789,12 +822,15 @@ export function ComposePane({ accountId, draft, onClose, onSent, leaveRef, sourc
             }}
             toolbarExtra={
               <>
+                {keyboardFix && <KeyboardFixButton editor={editor} />}
                 {editor && spell.settings && <SpellLanguageButton editor={editor} settings={spell.settings} />}
                 {aiMenu}
               </>
             }
           />
           {editor && spell.settings && spell.menu && <SpellMenu editor={editor} request={spell.menu} settings={spell.settings} onClose={spell.closeMenu} />}
+
+          {keyboardFix && <KeyboardFixHint editor={editor} />}
 
           {aiPanel && (
             <div className="border-border bg-secondary mx-4 mb-3 flex flex-col gap-2 rounded-md border p-3">

@@ -141,8 +141,11 @@ function hoistDocument(html: string): string {
   if (!/<(html|head|body)[\s>]/i.test(html)) return html;
 
   const doc = new DOMParser().parseFromString(html, "text/html");
+  // Outlook (Word) 把整段 CSS 包在 <!-- --> 里。DOMPurify 会丢掉文字里带「<!」的 <style>
+  // (防 mXSS 的规则), 于是 p.MsoNormal{margin:0} 与字体全没了: 每行都隔开 1em, 分不清段落。
+  // CDO/CDC 在 CSS 里本来就被忽略, 去掉它们不改变样式; 其它带「<」的内容仍照常被丢弃。
   const styles = Array.from(doc.head.querySelectorAll("style"))
-    .map((el) => `<style>${el.textContent ?? ""}</style>`)
+    .map((el) => `<style>${(el.textContent ?? "").replace(/<!--|-->/g, "")}</style>`)
     .join("");
 
   const body = doc.body;

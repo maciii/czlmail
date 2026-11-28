@@ -82,7 +82,7 @@ import { displayAddressList, fullDate } from "@/lib/format";
 import { printEmail } from "@/lib/print";
 import { useAppearance } from "@/lib/theme";
 import { listen, send, takePendingFileEmail, takePendingOpenEmail } from "@/lib/app-bus";
-import { escapeHtml, splitDraftHtml, textToHtml } from "@/lib/html";
+import { escapeHtml, splitDraftHtml, textToEditorHtml, textToHtml } from "@/lib/html";
 import { emailKey, groupByAccount, parseEmailKey } from "@/lib/email-key";
 import { warmEmails } from "@/lib/email-cache";
 import { cachedList, rememberList } from "@/lib/list-cache";
@@ -685,7 +685,7 @@ export function MailShell({ active, onSignedOut }: { active: boolean; onSignedOu
       openEmailIn(acc, id);
     });
     const offCompose = listen("compose", ({ to, cc, bcc, subject, body }) =>
-      setDraft({ to, cc: cc ?? "", bcc: bcc ?? "", subject: subject ?? "", html: body ? textToHtml(body) : "" }),
+      setDraft({ to, cc: cc ?? "", bcc: bcc ?? "", subject: subject ?? "", html: body ? textToEditorHtml(body) : "" }),
     );
 
     return () => {
@@ -2295,7 +2295,7 @@ async function uploadFileParts(d: ComposeDraft): Promise<ComposeDraft> {
 
 /** 打开已有草稿继续编辑。 */
 function draftFromEmail(email: EmailDetail, accountId: string): ComposeDraft {
-  const { body, quote } = email.bodyHtml ? splitDraftHtml(email.bodyHtml) : { body: textToHtml(email.bodyText || ""), quote: "" };
+  const { body, quote } = email.bodyHtml ? splitDraftHtml(email.bodyHtml) : { body: textToEditorHtml(email.bodyText || ""), quote: "" };
   return {
     to: addressesOf(email.to),
     cc: addressesOf(email.cc),

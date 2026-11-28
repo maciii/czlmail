@@ -262,32 +262,51 @@ const maxSeparateRecipients = 100
 
 // SaveDraft 保存草稿, 返回新的草稿 id(每次保存都会换 id)。
 func (a *App) SaveDraft(req ComposeRequest) (string, error) {
+	saved, err := a.SaveDraftRefs(req)
+	return saved.DraftID, err
+}
+
+// SavedDraft 是保存草稿的结果: 新草稿 id 与新草稿里的附件引用。
+type SavedDraft struct {
+	DraftID string `json:"draftId"`
+	// Attachments 与 ComposeRequest.Attachments 一一对应, blobId 指向新草稿里的部件。
+	Attachments []AttachmentRef `json:"attachments"`
+}
+
+// SaveDraftRefs 保存草稿, 并返回之后保存与发送应当引用的附件。
+// 续编的草稿 (例如在手机上写的) 的附件引用旧草稿的部件; 保存后旧草稿被删, 在 czlmail-gateway
+// 这类按邮件 id 编 blob id 的服务器上那些 blob 跟着消失, 再用它们发送就是 blobNotFound。
+func (a *App) SaveDraftRefs(req ComposeRequest) (SavedDraft, error) {
 	s, err := a.syncerFor(req.AccountID)
 	if err != nil {
-		return "", err
+		return SavedDraft{}, err
 	}
 	st, err := a.currentStore()
 	if err != nil {
-		return "", err
+		return SavedDraft{}, err
 	}
 	drafts, err := mailboxByRole(st, a.ctx, req.AccountID, "drafts")
 	if err != nil {
-		return "", err
+		return SavedDraft{}, err
 	}
 	d, err := a.draftFrom(req)
 	if err != nil {
-		return "", err
+		return SavedDraft{}, err
 	}
 	d.SendAt = time.Time{}
 	other := draftInOtherAccount(req)
 	if other {
 		d.ReplaceDraftID = ""
 	}
-	id, err := s.SaveDraft(a.ctx, d, drafts)
+	saved, err := s.SaveDraft(a.ctx, d, drafts)
 	if err == nil && other {
 		a.replaceDraftElsewhere(req)
 	}
-	return id, err
+	out := SavedDraft{DraftID: saved.ID}
+	for _, att := range saved.Attachments {
+		out.Attachments = append(out.Attachments, AttachmentRef{BlobID: att.BlobID, Type: att.Type, Name: att.Name, CID: att.CID})
+	}
+	return out, err
 }
 
 // DiscardDraft 删除草稿。

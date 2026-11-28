@@ -8,8 +8,11 @@ import "context"
 // 通知缺失不应妨碍邮件客户端本身可用。
 type noopNotifier struct{}
 
-func New(context.Context) (Notifier, error) { return noopNotifier{}, nil }
+func New(context.Context, App) (Notifier, error) { return noopNotifier{}, nil }
 
 func (noopNotifier) Notify(context.Context, Notification) error { return nil }
 func (noopNotifier) OnActivated(func(string))                   {}
 func (noopNotifier) Close() error                               { return nil }
+
+// Unregister 只在 Windows 上有事可做 (通知登记在注册表里)。
+func Unregister(string) error { return nil }

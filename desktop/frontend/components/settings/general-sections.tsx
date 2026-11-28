@@ -1,6 +1,6 @@
 "use client";
 
-import { t } from "@/lib/i18n";
+import { getLocale, t } from "@/lib/i18n";
 import { useI18n } from "@/components/locale-provider";
 
 import { useEffect, useState } from "react";
@@ -21,6 +21,7 @@ import { primaryPersonal, useAccounts as useAllAccounts } from "@/lib/account-fe
 import { accountName, useAccountLooks } from "@/lib/account-looks";
 import { languageName, spellSettings, type SpellSettings } from "@/lib/spellcheck";
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { czechLayoutSetting, setCzechLayout, type CzechLayoutSetting } from "@/lib/keyboard-layout";
 
 export function AppearanceSection({ active }: { active: boolean }) {
   useI18n();
@@ -311,6 +312,8 @@ export function ComposeSection({ active }: { active: boolean }) {
           />
         </Row>
         <SpellcheckLanguageRow active={active} />
+        <Divider />
+        <CzechKeyboardRow />
       </Card>
       <SectionTitle title={t("发送前检查")} small />
       <Card>
@@ -330,24 +333,7 @@ export function ComposeSection({ active }: { active: boolean }) {
   );
 }
 
-/**
- * Spell-check languages offered in Settings: names in their own language, so they need no translation.
- * WebView2 on Windows checks one language at a time (see spellcheck.go).
- */
-const SPELLCHECK_LANGUAGES: readonly (readonly [string, string])[] = [
-  ["cs", "Čeština"],
-  ["de-DE", "Deutsch"],
-  ["en-GB", "English (UK)"],
-  ["en-US", "English (US)"],
-  ["es-ES", "Español"],
-  ["fr-FR", "Français"],
-  ["it-IT", "Italiano"],
-  ["pl", "Polski"],
-  ["sk", "Slovenčina"],
-  ["ru", "Русский"],
-];
-
-/** Spell-check language for the editor; Windows only, applied on the next start. */
+/** 拼写检查语言 (仅 Windows): 选了语言时用 Windows 的词典自己检查, 不选时用 WebView2 自带的检查。 */
 function SpellcheckLanguageRow({ active }: { active: boolean }) {
   useI18n();
   const [state, setState] = useState<SpellSettings | null>(null);
@@ -369,11 +355,11 @@ function SpellcheckLanguageRow({ active }: { active: boolean }) {
       {state.available.length > 0 && (
         <>
           <Divider />
-          <Row title={t("多种语言同时检查拼写")} desc={t("用 Windows 的词典检查：一个词在任一所选语言里正确就不标。选中文字的语言可以在 AI 旁边的按钮里切换。")}>
+          <Row title={t("拼写检查语言")} desc={t("用 Windows 的词典检查，一个词在任一所选语言里正确就不标；选中文字的语言可以在 AI 旁边的按钮里切换。不选时按 Windows 显示语言检查。")}>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="max-w-56 justify-between gap-2">
-                  <span className="truncate">{many ? state.languages.map(languageName).join(", ") : t("未开启")}</span>
+                  <span className="truncate">{many ? state.languages.map(languageName).join(", ") : t("跟随 Windows 显示语言")}</span>
                   <ChevronDown className="size-3.5 shrink-0" />
                 </Button>
               </DropdownMenuTrigger>
@@ -395,26 +381,29 @@ function SpellcheckLanguageRow({ active }: { active: boolean }) {
           </Row>
         </>
       )}
-      {!many && (
-        <>
-          <Divider />
-          <Row title={t("拼写检查语言")} desc={t("写邮件时按这种语言检查拼写（一次只能一种），重新启动应用后生效")}>
-            <OptionSelect
-              value={state.language}
-              onChange={(language) => {
-                api.setSpellcheckLanguage(language).then(
-                  () => {
-                    setState({ ...state, language });
-                    toast.success(t("重新启动应用后生效"));
-                  },
-                  (err) => toast.error(errorMessage(err)),
-                );
-              }}
-              options={[["", t("跟随 Windows 显示语言")], ...SPELLCHECK_LANGUAGES]}
-            />
-          </Row>
-        </>
-      )}
     </>
+  );
+}
+
+/** 写信时纠正用错布局打的字 (Ctrl+Shift+K) 按哪种捷克语布局换算; 关闭时编辑器里不出现。只存这台机器。 */
+function CzechKeyboardRow() {
+  useI18n();
+  const [layout, setLayout] = useState<CzechLayoutSetting>(() => czechLayoutSetting(getLocale()));
+  return (
+    <Row title={t("捷克语键盘")} desc={t("开着英文布局打了捷克语时，用 Ctrl+Shift+K 换成捷克语；选择你用的捷克语布局")}>
+      <OptionSelect
+        value={layout}
+        onChange={(v) => {
+          const next: CzechLayoutSetting = v === "qwerty" || v === "qwertz" ? v : "off";
+          setCzechLayout(next);
+          setLayout(next);
+        }}
+        options={[
+          ["off", t("不使用")],
+          ["qwertz", "QWERTZ"],
+          ["qwerty", "QWERTY"],
+        ]}
+      />
+    </Row>
   );
 }

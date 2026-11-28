@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 
+	"github.com/woodchen-ink/czlmail/desktop/internal/config"
 	"github.com/woodchen-ink/czlmail/desktop/notify"
 )
 
@@ -12,9 +13,19 @@ import (
 // 超出的部分合并成一条汇总。
 const notifyMax = 5
 
+// notifyApp 描述通知归属的应用。测试实例在名字后标出实例名, 与正式版的通知一眼可分。
+func notifyApp() notify.App {
+	id := config.InstanceID()
+	name := "CZL Mail"
+	if instance, ok := strings.CutPrefix(id, "net.czl.mail."); ok {
+		name += " (" + instance + ")"
+	}
+	return notify.App{ID: id, Name: name, Icon: notifyIcon}
+}
+
 // initNotifier 准备系统通知。失败只记日志 —— 收不到通知远不如收不到邮件严重。
 func (a *App) initNotifier() {
-	n, err := notify.New(a.ctx)
+	n, err := notify.New(a.ctx, notifyApp())
 	if err != nil {
 		a.log.Warn("system notifications unavailable", "err", err)
 		return

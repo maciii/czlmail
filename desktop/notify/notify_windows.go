@@ -3,25 +3,29 @@
 package notify
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 
 	toast "git.sr.ht/~jackmordaunt/go-toast/v2"
+	"github.com/woodchen-ink/czlmail/desktop/internal/config"
+	"golang.org/x/sys/windows/registry"
 )
 
-// appID 是 AppUserModelID。Windows 用它决定通知归属哪个应用、
-// 在操作中心里显示什么名字, 以及点击时唤起谁。
-const appID = "net.czl.mail"
-
-// appGUID 用于把 COM 激活回调路由回本进程。
+// AppUserModelID 决定通知归属哪个应用、点击时唤起谁; 操作中心里显示的名字与图标
+// 取自 HKCU\Software\Classes\AppUserModelId\<ID> 下的 DisplayName 与 IconUri。
 //
-// 必须是一个固定不变的值: Windows 会把它写进注册表, 每次构建换一个新 GUID 会
-// 在系统里堆下一串死条目, 且旧通知的点击将无处可去。
-const appGUID = "{8F3A2C41-6D5E-4B7A-9C18-2E4D7A9B0C31}"
+// go-toast 把 DisplayName 写成 ID 本身, 且已有的值不再覆盖, 于是通知上显示的是
+// "net.czl.mail"。这里在交给 go-toast 之前自己写好名字、图标与唤起路径:
+// 每次启动都写, 程序换了位置或升级后的旧记录也随之更正。
+const appModelKey = `Software\Classes\AppUserModelId\`
 
 type windowsNotifier struct {
+	appID    string
 	mu       sync.Mutex
 	onAction func(string)
 }
@@ -30,22 +34,30 @@ type windowsNotifier struct {
 //
 // Windows 上不注册 AppUserModelID 的话 toast 根本不会显示 —— 不是报错,
 // 是静默地什么都不发生, 这是最容易踩进去的坑。
-func New(context.Context) (Notifier, error) {
+func New(_ context.Context, app App) (Notifier, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return nil, fmt.Errorf("4001 locate executable: %w", err)
 	}
+	if app.ID == "" {
+		app.ID = defaultAppID
+	}
+	guid := activatorGUID(app.ID)
+
+	if err := registerApp(app, guid, exe); err != nil {
+		return nil, fmt.Errorf("4004 register notification app: %w", err)
+	}
 
 	if err := toast.SetAppData(toast.AppData{
-		AppID: appID,
-		GUID:  appGUID,
+		AppID: app.ID,
+		GUID:  guid,
 		// 应用没在运行时, Windows 靠这个路径把它拉起来处理点击。
 		ActivationExe: exe,
 	}); err != nil {
 		return nil, fmt.Errorf("4002 register notification app id: %w", err)
 	}
 
-	n := &windowsNotifier{}
+	n := &windowsNotifier{appID: app.ID}
 	toast.SetActivationCallback(func(args string, _ []toast.UserData) {
 		n.mu.Lock()
 		fn := n.onAction
@@ -57,9 +69,58 @@ func New(context.Context) (Notifier, error) {
 	return n, nil
 }
 
+// registerApp 写入通知上显示的名字、图标, 以及点击通知时唤起的程序。
+func registerApp(app App, guid, exe string) error {
+	values := map[string]string{"DisplayName": app.Name}
+	if app.Name == "" {
+		values["DisplayName"] = app.ID
+	}
+	// 图标写不出来只是少个图标, 不影响通知本身。
+	if icon, err := writeIcon(app.Icon); err == nil && icon != "" {
+		values["IconUri"] = icon
+	}
+	if err := setValues(appModelKey+app.ID, values); err != nil {
+		return err
+	}
+	return setValues(`Software\Classes\CLSID\`+guid+`\LocalServer32`, map[string]string{"": exe})
+}
+
+// writeIcon 把图标存进数据目录: IconUri 只接受磁盘上的文件。内容没变时不重写。
+func writeIcon(png []byte) (string, error) {
+	if len(png) == 0 {
+		return "", nil
+	}
+	dir, err := config.Dir()
+	if err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, "notification-icon.png")
+	if old, err := os.ReadFile(path); err == nil && bytes.Equal(old, png) {
+		return path, nil
+	}
+	if err := os.WriteFile(path, png, 0o600); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+func setValues(path string, values map[string]string) error {
+	k, _, err := registry.CreateKey(registry.CURRENT_USER, path, registry.SET_VALUE)
+	if err != nil {
+		return err
+	}
+	defer k.Close()
+	for name, v := range values {
+		if err := k.SetStringValue(name, v); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (n *windowsNotifier) Notify(_ context.Context, msg Notification) error {
 	notification := toast.Notification{
-		AppID:               appID,
+		AppID:               n.appID,
 		Title:               msg.Title,
 		Body:                msg.Body,
 		ActivationType:      toast.Foreground,
@@ -79,3 +140,40 @@ func (n *windowsNotifier) OnActivated(fn func(string)) {
 }
 
 func (n *windowsNotifier) Close() error { return nil }
+
+// Unregister 删掉 New 写进注册表的通知登记 (显示名、图标与点击唤起路径), 给「删除所有数据」用。
+// 不存在的项不算错。
+func Unregister(appID string) error {
+	if appID == "" {
+		appID = defaultAppID
+	}
+	return errors.Join(
+		deleteKeyTree(appModelKey+appID),
+		deleteKeyTree(`Software\Classes\CLSID\`+activatorGUID(appID)),
+	)
+}
+
+// deleteKeyTree 删除 HKCU 下的一个键及其子键。
+func deleteKeyTree(path string) error {
+	k, err := registry.OpenKey(registry.CURRENT_USER, path, registry.ENUMERATE_SUB_KEYS)
+	if errors.Is(err, registry.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	subs, err := k.ReadSubKeyNames(-1)
+	k.Close()
+	if err != nil {
+		return err
+	}
+	for _, sub := range subs {
+		if err := deleteKeyTree(path + `\` + sub); err != nil {
+			return err
+		}
+	}
+	if err := registry.DeleteKey(registry.CURRENT_USER, path); err != nil && !errors.Is(err, registry.ErrNotExist) {
+		return err
+	}
+	return nil
+}

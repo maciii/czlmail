@@ -48,6 +48,11 @@ interface Props {
   toolbarExtra?: React.ReactNode;
   /** 编辑器就绪后把光标放在正文开头。 */
   autoFocus?: boolean;
+  /**
+   * 正文和签名、引用一起在外层滚动时 (写信面板), 工具条吸顶, 长邮件往下写时不会被滚出视野。
+   * 光标滚动定位时让出工具条的高度, 免得当前行被它挡住。
+   */
+  stickyToolbar?: boolean;
 }
 
 /**
@@ -58,7 +63,7 @@ interface Props {
  */
 const TEXT_COLORS = ["#000000", "#444444", "#C0392B", "#D35400", "#B7950B", "#1E8449", "#1F618D", "#7D3C98"];
 
-export function RichEditor({ content, placeholder, onChange, onReady, className, toolbarExtra, autoFocus }: Props) {
+export function RichEditor({ content, placeholder, onChange, onReady, className, toolbarExtra, autoFocus, stickyToolbar }: Props) {
   useI18n();
   const toolbarRef = useRef<HTMLDivElement>(null);
   const editor = useEditor({
@@ -83,6 +88,29 @@ export function RichEditor({ content, placeholder, onChange, onReady, className,
     autofocus: autoFocus ? "start" : false,
     editorProps: {
       attributes: { class: "czl-editor min-h-48 outline-none px-4 py-3 text-sm leading-relaxed", "aria-keyshortcuts": "Alt+F10" },
+      // 工具条吸顶时, 它会盖住滚动区域最上面的一截; 按工具条当前高度 (窄窗口里会换行) 留出边距。
+      scrollMargin: stickyToolbar
+        ? {
+            get top() {
+              return (toolbarRef.current?.offsetHeight ?? 0) + 8;
+            },
+            bottom: 8,
+            left: 5,
+            right: 5,
+          }
+        : undefined,
+      // 只设 scrollMargin 不够: ProseMirror 只在光标越过 scrollThreshold (默认 0, 即滚动区域边缘) 时才滚动,
+      // 光标停在工具条下面 (往上翻页、按上方向键、在被盖住的行里打字) 时不会动。被盖住的那一截也算越界。
+      scrollThreshold: stickyToolbar
+        ? {
+            get top() {
+              return (toolbarRef.current?.offsetHeight ?? 0) + 8;
+            },
+            bottom: 0,
+            left: 0,
+            right: 0,
+          }
+        : undefined,
       // Alt+F10 跳到格式工具条, 与 Word、TinyMCE、CKEditor 相同; 工具条里按 Esc 回到正文。
       handleKeyDown: (_view, event) => {
         if (event.key !== "F10" || !event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return false;
@@ -107,7 +135,7 @@ export function RichEditor({ content, placeholder, onChange, onReady, className,
   return (
     <div className={cn("flex min-h-0 flex-col", className)}>
       <EditorContent editor={editor} className="czl-scroll min-h-0 flex-1 overflow-y-auto" />
-      {editor && <Toolbar editor={editor} extra={toolbarExtra} containerRef={toolbarRef} />}
+      {editor && <Toolbar editor={editor} extra={toolbarExtra} containerRef={toolbarRef} sticky={stickyToolbar} />}
     </div>
   );
 }
@@ -155,7 +183,17 @@ function useRovingFocus(ref: RefObject<HTMLDivElement | null>) {
   }, [ref]);
 }
 
-function Toolbar({ editor, extra, containerRef }: { editor: Editor; extra?: React.ReactNode; containerRef: RefObject<HTMLDivElement | null> }) {
+function Toolbar({
+  editor,
+  extra,
+  containerRef,
+  sticky,
+}: {
+  editor: Editor;
+  extra?: React.ReactNode;
+  containerRef: RefObject<HTMLDivElement | null>;
+  sticky?: boolean;
+}) {
   useI18n();
   useRovingFocus(containerRef);
   const s = useEditorState({
@@ -217,7 +255,10 @@ function Toolbar({ editor, extra, containerRef }: { editor: Editor; extra?: Reac
       role="toolbar"
       aria-label={t("格式工具条")}
       onKeyDown={onKeyDown}
-      className="border-border order-first flex shrink-0 flex-wrap items-center gap-0.5 border-b px-2 py-1.5"
+      className={cn(
+        "border-border order-first flex shrink-0 flex-wrap items-center gap-0.5 border-b px-2 py-1.5",
+        sticky && "bg-background sticky top-0 z-10",
+      )}
     >
       <Btn label={t("加粗")} active={s.bold} onClick={() => chain().toggleBold().run()}>
         <Bold />
