@@ -4,7 +4,7 @@ import { t } from "@/lib/i18n";
 import { useI18n } from "@/components/locale-provider";
 
 import { useEffect, useState } from "react";
-import { ExternalLink, Monitor, Moon, Sun } from "lucide-react";
+import { ChevronDown, ExternalLink, Monitor, Moon, Sun } from "lucide-react";
 import { toast } from "sonner";
 
 import { LanguageSelect } from "@/components/language-select";
@@ -19,6 +19,8 @@ import { isNative } from "@/lib/native-bridge";
 import { clearAvatarCache } from "@/lib/avatar-cache";
 import { primaryPersonal, useAccounts as useAllAccounts } from "@/lib/account-features";
 import { accountName, useAccountLooks } from "@/lib/account-looks";
+import { languageName, spellSettings, type SpellSettings } from "@/lib/spellcheck";
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 export function AppearanceSection({ active }: { active: boolean }) {
   useI18n();
@@ -348,30 +350,71 @@ const SPELLCHECK_LANGUAGES: readonly (readonly [string, string])[] = [
 /** Spell-check language for the editor; Windows only, applied on the next start. */
 function SpellcheckLanguageRow({ active }: { active: boolean }) {
   useI18n();
-  const [state, setState] = useState<{ supported: boolean; language: string } | null>(null);
+  const [state, setState] = useState<SpellSettings | null>(null);
   useEffect(() => {
     if (!active) return;
-    api.getSpellcheckSettings().then(setState, () => setState(null));
+    spellSettings(true).then(setState);
   }, [active]);
   if (!state?.supported) return null;
+  const many = state.languages.length > 0;
+  const toggle = (lang: string, on: boolean) => {
+    const languages = on ? [...state.languages, lang] : state.languages.filter((l) => l !== lang);
+    api.setSpellcheckLanguages(languages).then(
+      () => setState({ ...state, languages }),
+      (err) => toast.error(errorMessage(err)),
+    );
+  };
   return (
     <>
-      <Divider />
-      <Row title={t("拼写检查语言")} desc={t("写邮件时按这种语言检查拼写（一次只能一种），重新启动应用后生效")}>
-        <OptionSelect
-          value={state.language}
-          onChange={(language) => {
-            api.setSpellcheckLanguage(language).then(
-              () => {
-                setState({ ...state, language });
-                toast.success(t("重新启动应用后生效"));
-              },
-              (err) => toast.error(errorMessage(err)),
-            );
-          }}
-          options={[["", t("跟随 Windows 显示语言")], ...SPELLCHECK_LANGUAGES]}
-        />
-      </Row>
+      {state.available.length > 0 && (
+        <>
+          <Divider />
+          <Row title={t("多种语言同时检查拼写")} desc={t("用 Windows 的词典检查：一个词在任一所选语言里正确就不标。选中文字的语言可以在 AI 旁边的按钮里切换。")}>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="max-w-56 justify-between gap-2">
+                  <span className="truncate">{many ? state.languages.map(languageName).join(", ") : t("未开启")}</span>
+                  <ChevronDown className="size-3.5 shrink-0" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="max-h-80 w-64 overflow-y-auto">
+                {[...state.available]
+                  .sort((a, b) => Number(state.languages.includes(b)) - Number(state.languages.includes(a)) || languageName(a).localeCompare(languageName(b)))
+                  .map((lang) => (
+                    <DropdownMenuCheckboxItem
+                      key={lang}
+                      checked={state.languages.includes(lang)}
+                      onCheckedChange={(on) => toggle(lang, !!on)}
+                      onSelect={(e) => e.preventDefault()}
+                    >
+                      {languageName(lang)} <span className="text-muted-foreground ml-auto text-xs">{lang}</span>
+                    </DropdownMenuCheckboxItem>
+                  ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </Row>
+        </>
+      )}
+      {!many && (
+        <>
+          <Divider />
+          <Row title={t("拼写检查语言")} desc={t("写邮件时按这种语言检查拼写（一次只能一种），重新启动应用后生效")}>
+            <OptionSelect
+              value={state.language}
+              onChange={(language) => {
+                api.setSpellcheckLanguage(language).then(
+                  () => {
+                    setState({ ...state, language });
+                    toast.success(t("重新启动应用后生效"));
+                  },
+                  (err) => toast.error(errorMessage(err)),
+                );
+              }}
+              options={[["", t("跟随 Windows 显示语言")], ...SPELLCHECK_LANGUAGES]}
+            />
+          </Row>
+        </>
+      )}
     </>
   );
 }

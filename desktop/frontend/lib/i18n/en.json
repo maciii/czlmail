@@ -1532,5 +1532,15 @@
   "拼写检查语言": "Spell-check language",
   "写邮件时按这种语言检查拼写（一次只能一种），重新启动应用后生效": "Spelling is checked in this language while you write (one language at a time). Takes effect after restarting the app",
   "重新启动应用后生效": "Takes effect after restarting the app",
-  "跟随 Windows 显示语言": "Windows display language"
+  "跟随 Windows 显示语言": "Windows display language",
+  "多种语言同时检查拼写": "Check spelling in several languages",
+  "用 Windows 的词典检查：一个词在任一所选语言里正确就不标。选中文字的语言可以在 AI 旁边的按钮里切换。": "Uses the Windows dictionaries: a word that is right in any of the chosen languages is not marked. Switch the language of the selected text with the button next to AI.",
+  "不检查拼写": "Do not check spelling",
+  "选中文字的语言": "Language of the selected text",
+  "我的所有语言": "All my languages",
+  "没有拼写建议": "No spelling suggestions",
+  "添加到词典": "Add to dictionary",
+  "全部忽略": "Ignore all",
+  "这个词的语言": "Language of this word",
+  "未开启": "Off"
 }

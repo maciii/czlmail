@@ -30,6 +30,8 @@ const (
 	EventPIMChanged = "pim:changed"
 	// EventSettingsChanged 应用设置(AppSettings)保存了, 无负载; 侧栏据此重读静音账号。
 	EventSettingsChanged = "settings:changed"
+	// EventSpellcheckChanged 拼写检查的语言改了, 无负载; 打开的写信面板据此重新检查。
+	EventSpellcheckChanged = "spellcheck:changed"
 	// EventAccountsChanged 会话里的账号增减或改名(共享、撤销共享), 无负载; 界面据此重读账号列表。
 	EventAccountsChanged = "session:accounts-changed"
 )

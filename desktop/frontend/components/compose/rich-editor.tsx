@@ -11,6 +11,7 @@ import TextAlign from "@tiptap/extension-text-align";
 import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
 import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
+import { SpellLanguage } from "@/components/compose/spellcheck-plugin";
 import {
   AlignCenter,
   AlignLeft,
@@ -75,6 +76,7 @@ export function RichEditor({ content, placeholder, onChange, onReady, className,
       TableCell,
       Image.configure({ inline: true, allowBase64: true }),
       Placeholder.configure({ placeholder: placeholder ?? "" }),
+      SpellLanguage,
     ],
     content,
     // 交给 tiptap 在视图挂上之后再聚焦; onReady 时视图可能还没挂上, 那时调 focus() 不起作用。
