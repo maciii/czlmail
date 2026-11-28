@@ -309,6 +309,10 @@ export function MailSidebar({
   const smartRows = smartFolders.map((f) => {
     const count = smartCounts[f.id];
     const num = (c?: { total: number; unread: number }) => (c ? (f.unread ? c.unread : c.total) : 0);
+    // 红色角标 (条件里有「未读」) 与「未读」一样不算静音的账号; 灰字的总数照样算。
+    const rowCount = f.unread
+      ? Object.entries(count?.accounts ?? {}).reduce((n, [acc, c]) => (muted.has(acc) ? n : n + c.unread), 0)
+      : num(count);
     // 选了账号的只列那几个, 否则同「全部账号」。
     const scoped = f.accounts?.length || f.accountsElsewhere ? accounts.filter((a) => f.accounts?.includes(a.id)) : unifiedAccounts;
     return {
@@ -316,7 +320,7 @@ export function MailSidebar({
       icon: FolderSearch,
       color: "text-folder-inbox",
       label: f.name,
-      unread: num(count),
+      unread: rowCount,
       badge: f.unread,
       accountRows: scoped.map((account) => ({ account, count: num(count?.accounts?.[account.id]) })),
       smart: f,

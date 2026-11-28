@@ -41,7 +41,8 @@ export function OptionSelect({
       <SelectContent>
         {options.map(([v, label]) => (
           <SelectItem key={v} value={toItem(v)}>
-            {label}
+            {/* 选中后同一段文字显示在触发按钮里: 按钮放不下时末尾省略, 不硬截断。 */}
+            <span className="min-w-0 truncate">{label}</span>
           </SelectItem>
         ))}
       </SelectContent>

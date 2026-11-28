@@ -318,27 +318,41 @@ func (a *App) smartFolderByID(st *store.Store, id string) (SmartFolder, error) {
 	return v.local(id, a.lookSignIns()), nil
 }
 
-// smartFolderQuery 是筛选文件夹要找的文件夹与条件; only 不为空时只看这一个本机账号。
-// 选了账号却一个都不在本机 (别的设备上的登录) 时没有文件夹, 列表为空, 而不是退回所有账号。
-func (a *App) smartFolderQuery(st *store.Store, f SmartFolder, only string) ([]store.MailboxRef, store.EmailFilter, error) {
-	filter := store.EmailFilter{Unread: f.Unread, Flag: f.Flag, Keywords: f.Tags, Attachment: f.Attachment, From: f.From}
+// smartMailboxes 是算筛选文件夹用的账号与文件夹快照: 一次数多个筛选文件夹时只读一遍。
+type smartMailboxes struct {
+	accounts []store.Account
+	excluded []string
+	boxes    map[string][]store.Mailbox
+}
+
+func (a *App) loadSmartMailboxes(st *store.Store) (smartMailboxes, error) {
 	accounts, err := st.Accounts(a.ctx)
 	if err != nil {
-		return nil, filter, err
+		return smartMailboxes{}, err
 	}
-	picked := len(f.Accounts) > 0 || f.AccountsElsewhere > 0
-	excluded := a.accountListSetting(st, settingUnifiedExcluded)
-	var out []store.MailboxRef
+	snap := smartMailboxes{accounts: accounts, excluded: a.accountListSetting(st, settingUnifiedExcluded), boxes: map[string][]store.Mailbox{}}
 	for _, acc := range accounts {
-		if only != "" && acc.ID != only ||
-			picked && !slices.Contains(f.Accounts, acc.ID) || !picked && slices.Contains(excluded, acc.ID) {
-			continue
-		}
 		boxes, err := st.Mailboxes(a.ctx, acc.ID)
 		if err != nil {
-			return nil, filter, err
+			return smartMailboxes{}, err
 		}
-		for _, b := range boxes {
+		snap.boxes[acc.ID] = boxes
+	}
+	return snap, nil
+}
+
+// smartFolderQuery 是筛选文件夹要找的文件夹与条件; only 不为空时只看这一个本机账号。
+// 选了账号却一个都不在本机 (别的设备上的登录) 时没有文件夹, 列表为空, 而不是退回所有账号。
+func smartFolderQuery(snap smartMailboxes, f SmartFolder, only string) ([]store.MailboxRef, store.EmailFilter) {
+	filter := store.EmailFilter{Unread: f.Unread, Flag: f.Flag, Keywords: f.Tags, Attachment: f.Attachment, From: f.From}
+	picked := len(f.Accounts) > 0 || f.AccountsElsewhere > 0
+	var out []store.MailboxRef
+	for _, acc := range snap.accounts {
+		if only != "" && acc.ID != only ||
+			picked && !slices.Contains(f.Accounts, acc.ID) || !picked && slices.Contains(snap.excluded, acc.ID) {
+			continue
+		}
+		for _, b := range snap.boxes[acc.ID] {
 			var match bool
 			switch f.Scope {
 			case smartScopeInbox:
@@ -353,7 +367,7 @@ func (a *App) smartFolderQuery(st *store.Store, f SmartFolder, only string) ([]s
 			}
 		}
 	}
-	return out, filter, nil
+	return out, filter
 }
 
 // listSmartFolder 分页列出筛选文件夹 (only 不为空时其中一个账号) 里的邮件, 按收件时间倒序。
@@ -362,10 +376,11 @@ func (a *App) listSmartFolder(st *store.Store, id, only string, limit, offset in
 	if err != nil {
 		return nil, err
 	}
-	boxes, filter, err := a.smartFolderQuery(st, f, only)
+	snap, err := a.loadSmartMailboxes(st)
 	if err != nil {
 		return nil, err
 	}
+	boxes, filter := smartFolderQuery(snap, f, only)
 	return st.FilteredEmails(a.ctx, boxes, filter, limit, offset)
 }
 
@@ -380,11 +395,16 @@ func (a *App) SmartFolderCounts() (map[string]SmartFolderCount, error) {
 		return nil, err
 	}
 	out := map[string]SmartFolderCount{}
-	for _, f := range smartFolderList(rows, a.lookSignIns()) {
-		boxes, filter, err := a.smartFolderQuery(st, f, "")
-		if err != nil {
-			return nil, err
-		}
+	folders := smartFolderList(rows, a.lookSignIns())
+	if len(folders) == 0 {
+		return out, nil
+	}
+	snap, err := a.loadSmartMailboxes(st)
+	if err != nil {
+		return nil, err
+	}
+	for _, f := range folders {
+		boxes, filter := smartFolderQuery(snap, f, "")
 		byAccount, err := st.CountFilteredEmails(a.ctx, boxes, filter)
 		if err != nil {
 			return nil, err

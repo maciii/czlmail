@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { t } from "@/lib/i18n";
 import { Events, api, onEvent } from "@/lib/api";
@@ -115,43 +115,35 @@ export function useSmartFolders(): { folders: SmartFolder[]; loaded: boolean } {
 }
 
 /**
- * 各筛选文件夹本地缓存里的邮件数与未读数。deps 变了 (文件夹的未读数、定义) 就重数,
- * 一秒内的多次变化只数一次: 同步一轮会连着发好几次。
+ * 各筛选文件夹本地缓存里的邮件数与未读数。定义变了很快重数; 文件夹未读数 (deps) 变化与邮件变化事件
+ * (只改了旗标、标签的邮件不一定让未读数变) 合在一起, 1 秒内只数一次: 同步一轮会连着发好几次。
  */
 export function useSmartFolderCounts(folders: SmartFolder[], deps: unknown): Record<string, SmartFolderCount> {
   const [counts, setCounts] = useState<Record<string, SmartFolderCount>>({});
   const active = folders.length > 0;
-  useEffect(() => {
-    if (!active) return;
-    let cancelled = false;
-    const id = setTimeout(() => {
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const schedule = useCallback((delay: number) => {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
       api
         .smartFolderCounts()
-        .then((c) => !cancelled && setCounts((c ?? {}) as Record<string, SmartFolderCount>))
+        .then((c) => setCounts((c ?? {}) as Record<string, SmartFolderCount>))
         .catch(() => {});
-    }, 300);
-    return () => {
-      cancelled = true;
-      clearTimeout(id);
-    };
-  }, [active, folders, deps]);
+    }, delay);
+  }, []);
+  useEffect(() => {
+    if (active) schedule(300);
+  }, [active, folders, schedule]);
+  useEffect(() => {
+    if (active) schedule(1000);
+  }, [active, deps, schedule]);
   useEffect(() => {
     if (!active) return;
-    // 只改了关键字 (旗标、标签) 的邮件不一定让文件夹的未读数变化, 邮件变化事件也要重数。
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const off = onEvent(Events.mailChanged, () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        api
-          .smartFolderCounts()
-          .then((c) => setCounts((c ?? {}) as Record<string, SmartFolderCount>))
-          .catch(() => {});
-      }, 1000);
-    });
+    const off = onEvent(Events.mailChanged, () => schedule(1000));
     return () => {
-      clearTimeout(timer);
+      clearTimeout(timer.current);
       off();
     };
-  }, [active]);
+  }, [active, schedule]);
   return counts;
 }

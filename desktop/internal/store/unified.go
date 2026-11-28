@@ -146,7 +146,7 @@ func (s *Store) CountFilteredEmails(ctx context.Context, boxes []MailboxRef, f E
 		return out, nil
 	}
 	where, args := filterWhere(boxes, f)
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT e.account_id, COUNT(*), COALESCE(SUM(NOT `+hasKeywordSQL("$seen")+`), 0)
 		FROM emails e
 		WHERE `+where+`
