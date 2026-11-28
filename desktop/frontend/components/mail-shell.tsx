@@ -42,6 +42,7 @@ import { EmailContextMenu, type EmailMenuActions } from "@/components/email-cont
 import { EmailList, type ListNav } from "@/components/email-list";
 import { EmailView } from "@/components/email-view";
 import { MailSidebar, UNIFIED_UNREAD } from "@/components/mail-sidebar";
+import { isMixedView, smartIdOf, splitViewAccount, useSmartFolders } from "@/lib/smart-folders";
 import { MailSyncState } from "@/components/mail-sync-state";
 import { UpstreamState } from "@/components/upstream-status";
 import { upstreamOK } from "@/lib/upstream";
@@ -182,11 +183,12 @@ export function MailShell({ active, onSignedOut }: { active: boolean; onSignedOu
   }, []);
   const marks = useMessageMarksState();
   const favoriteFolders = useFavoriteFolders();
+  const smartFolders = useSmartFolders();
   const [mailboxesByAccount, setMailboxesByAccount] = useState<Record<string, Mailbox[]>>({});
   const [accountId, setAccountId] = useState("");
   const [mailboxId, setMailboxId] = useState("");
-  // 统一视图: 所有账号的同类文件夹(或全部未读)合成一个列表。值是文件夹类别或 "unread",
-  // 空串表示在看 accountId/mailboxId 这个文件夹。
+  // 统一视图: 所有账号的同类文件夹(或全部未读)合成一个列表。值是文件夹类别、"unread" 或筛选文件夹 "smart:<id>",
+  // 后面可接 "@<账号>" 只看一个账号 (见 lib/smart-folders); 空串表示在看 accountId/mailboxId 这个文件夹。
   const [unified, setUnified] = useState("");
   const [labelsByAccount, setLabelsByAccount] = useState<Record<string, string[]>>({});
 
@@ -281,14 +283,33 @@ export function MailShell({ active, onSignedOut }: { active: boolean; onSignedOu
 
   const mailboxes = useMemo(() => mailboxesByAccount[accountId] ?? [], [mailboxesByAccount, accountId]);
   const currentKind = unified
-    ? unified === UNIFIED_UNREAD
+    ? isMixedView(unified)
       ? ""
       : unified
     : (mailboxes.find((m) => m.id === mailboxId)?.kind ?? "");
   const selected = parseEmailKey(selectedKey);
   // 新写的信从哪个账号发: 在看某个账号的文件夹时用它, 统一视图里用个人账号。
   const flatList = !searching && ["drafts", "scheduled"].includes(currentKind);
-  const composeAccount = unified ? defaultComposeAccount(accounts, composeDefault) || accountId : accountId;
+  // 只看一个账号的统一视图 (按账号展开的行) 里用那个账号。
+  const composeAccount = unified
+    ? splitViewAccount(unified).account || defaultComposeAccount(accounts, composeDefault) || accountId
+    : accountId;
+
+  // 打开筛选文件夹时让服务器补齐本地缓存没有的旗标 / 标签邮件 (后端只在有这类条件时查); 补进来的经 mail:changed 重载。
+  const openSmart = smartIdOf(unified);
+  useEffect(() => {
+    if (openSmart) api.refreshSmartFolder(openSmart).catch(() => {});
+  }, [openSmart]);
+
+  // 打开着的筛选文件夹被删掉了 (这里或别的设备上): 退回「未读」。
+  useEffect(() => {
+    const id = smartIdOf(unified);
+    if (id && smartFolders.loaded && !smartFolders.folders.some((f) => f.id === id)) {
+      // 只有一个账号时侧栏没有「未读」, 回到原来的文件夹。很少发生的纠正, 不值得把 unified 改成派生值。
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setUnified(accounts.length > 1 ? UNIFIED_UNREAD : "");
+    }
+  }, [unified, smartFolders, accounts.length]);
 
   /**
    * 列表里某个账号的邮件所在的文件夹: 文件夹视图是当前文件夹, 统一视图是该账号同类别的文件夹,
@@ -297,7 +318,7 @@ export function MailShell({ active, onSignedOut }: { active: boolean; onSignedOu
   const listBoxOf = useCallback(
     (acc: string) => {
       if (!unified) return acc === accountId ? mailboxId : "";
-      if (unified === UNIFIED_UNREAD) return "";
+      if (isMixedView(unified)) return "";
       return mailboxesByAccount[acc]?.find((m) => m.kind === unified)?.id ?? "";
     },
     [unified, accountId, mailboxId, mailboxesByAccount],
@@ -1188,7 +1209,7 @@ export function MailShell({ active, onSignedOut }: { active: boolean; onSignedOu
 
   /** 文件夹 acc/box 的变化是否会出现在当前列表里。 */
   const showsMailbox = useCallback(
-    (acc: string, box: string) => (unified ? unified === UNIFIED_UNREAD || listBoxOf(acc) === box : acc === accountId && box === mailboxId),
+    (acc: string, box: string) => (unified ? isMixedView(unified) || listBoxOf(acc) === box : acc === accountId && box === mailboxId),
     [unified, listBoxOf, accountId, mailboxId],
   );
 
@@ -1226,7 +1247,7 @@ export function MailShell({ active, onSignedOut }: { active: boolean; onSignedOu
       const name = mailboxLabel(box);
       const isCurrent = showsMailbox(acc, box.id);
       // 列表里属于这个文件夹的邮件; 未读视图分不出, 等重新加载。
-      const inBox = (e: EmailSummary) => e.accountId === acc && unified !== UNIFIED_UNREAD;
+      const inBox = (e: EmailSummary) => e.accountId === acc && !isMixedView(unified);
       const toastId = `folder:${action}:${acc}/${box.id}`;
       switch (action) {
         case "import":
@@ -1747,6 +1768,7 @@ export function MailShell({ active, onSignedOut }: { active: boolean; onSignedOu
                 accounts={accounts}
                 looks={accountLooks}
                 favorites={favoriteFolders}
+                smartFolders={smartFolders.folders}
                 mailboxesByAccount={mailboxesByAccount}
                 accountId={accountId}
                 mailboxId={mailboxId}

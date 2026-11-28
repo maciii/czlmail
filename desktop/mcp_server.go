@@ -241,6 +241,7 @@ func (a *App) newMCPServer() *mcp.Server {
 	})
 	a.addMailTools(server)
 	a.addOrganizeTools(server)
+	a.addSmartFolderTools(server)
 	a.addComposeTools(server)
 	a.addCalendarTools(server)
 	a.addContactFileTools(server)

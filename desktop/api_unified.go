@@ -12,7 +12,9 @@ import (
 // 统一视图: 所有账号(个人 + 共享)的同类文件夹合成一个列表, 不用逐个点进共享邮箱查看。
 // 设置里排除的账号 (settingUnifiedExcluded) 不进文件夹列表与「未读」; 统一搜索仍覆盖全部账号 ——
 // 被排除的多是归档这类平时不看、要查时才搜的邮箱。
-// view 是文件夹类别(inbox/drafts/...), 或 unifiedUnread 表示各账号所有需要处理的未读。
+// view 是文件夹类别(inbox/drafts/...), unifiedUnread 表示各账号所有需要处理的未读,
+// 或 "smart:" + id 表示一个筛选文件夹 (smart_folders.go)。
+// 后面接 "@" + 本机账号 id 时只看那一个账号 (侧栏里「未读」与筛选文件夹按账号展开的行)。
 const unifiedUnread = "unread"
 
 // unifiedKinds 是可以合并查看的文件夹类别, 自建文件夹各账号互不对应, 不参与。
@@ -41,9 +43,16 @@ func (a *App) ListUnified(view string, limit, offset int) ([]store.EmailSummary,
 	if offset < 0 {
 		offset = 0
 	}
+	view, only := splitViewAccount(view)
+	if id, ok := strings.CutPrefix(view, smartViewPrefix); ok {
+		return a.listSmartFolder(st, id, only, limit, offset)
+	}
 	boxes, err := a.unifiedMailboxes(st, view)
 	if err != nil {
 		return nil, err
+	}
+	if only != "" {
+		boxes = slices.DeleteFunc(boxes, func(b store.MailboxRef) bool { return b.AccountID != only })
 	}
 	if view != unifiedUnread {
 		var wg sync.WaitGroup
@@ -53,6 +62,16 @@ func (a *App) ListUnified(view string, limit, offset int) ([]store.EmailSummary,
 		wg.Wait()
 	}
 	return st.EmailsInMailboxes(a.ctx, boxes, view == unifiedUnread, limit, offset)
+}
+
+// viewAccountSeparator 分隔统一视图与单个账号: "unread@s2~a" 是 s2~a 这个账号里的「未读」。
+// JMAP 的 id 与登录前缀里都没有 "@"。
+const viewAccountSeparator = "@"
+
+// splitViewAccount 拆出统一视图与限定的本机账号 id (没有限定时为空)。
+func splitViewAccount(view string) (base, account string) {
+	base, account, _ = strings.Cut(view, viewAccountSeparator)
+	return base, account
 }
 
 // unifiedMailboxes 找出各账号里属于该视图的文件夹。
