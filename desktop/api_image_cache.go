@@ -166,7 +166,8 @@ func (a *App) cachedBlob(ctx context.Context, accountID, blobID string) ([]byte,
 	if _, err := io.Copy(&buf, io.LimitReader(rc, maxPreviewBytes)); err != nil {
 		return nil, err
 	}
-	if cache != nil {
+	// 只缓存真是图片的内容: 界面按文件名猜成图片的部件可能不是 (会被拒绝显示), 不占图片缓存。
+	if cache != nil && imgcache.ImageType(buf.Bytes(), "") != "" {
 		// 类型由请求方给出, 缓存里的类型只作记录。
 		if err := cache.Put(key, "application/octet-stream", buf.Bytes()); err != nil {
 			a.log.Warn("cache blob", "err", err)

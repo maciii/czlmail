@@ -31,6 +31,7 @@ func TestServeBlobImageTypeFollowsContent(t *testing.T) {
 	}
 	put("photo", jpg.Bytes())
 	put("html", []byte("<html><script>alert(1)</script></html>"))
+	put("avif", append([]byte{0, 0, 0, 0x1c}, append([]byte("ftypavif"), 0, 0, 0, 0)...))
 
 	serve := func(blob, typ string) *httptest.ResponseRecorder {
 		w := httptest.NewRecorder()
@@ -47,5 +48,9 @@ func TestServeBlobImageTypeFollowsContent(t *testing.T) {
 	// 名为图片、内容不是图片: 不当图片返回。
 	if w := serve("html", "image/png"); w.Code != 415 || w.Body.String() == "<html><script>alert(1)</script></html>" {
 		t.Errorf("non-image served as image: %d %q", w.Code, w.Header().Get("Content-Type"))
+	}
+	// 标成 PNG、内容是 AVIF: 预览类型表里没有它, 但按内容认得出是位图, 照样显示。
+	if w := serve("avif", "image/png"); w.Code != 200 || w.Header().Get("Content-Type") != "image/avif" {
+		t.Errorf("avif as png: %d %q", w.Code, w.Header().Get("Content-Type"))
 	}
 }
