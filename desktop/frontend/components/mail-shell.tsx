@@ -1658,11 +1658,12 @@ export function MailShell({ active, onSignedOut }: { active: boolean; onSignedOu
    * 主登录的个人邮箱起了名字也不标, 否则满屏都是同一个标签。有别的个人邮箱 (其它登录、网关) 时它就不再是
    * 绝大多数, 也标, 否则只有它的邮件没有名字, 要靠颜色线猜。设了颜色的账号 (含主登录的) 另在行左边画一条细线。
    */
+  const personalCount = accounts.filter((a) => a.isPersonal).length;
   function accountOf(email: EmailSummary): { label?: string; title: string; color?: string } | null {
     const acc = accounts.find((a) => a.id === email.accountId);
     if (!acc) return null;
     const color = accountColor(acc.id, accountLooks);
-    const onlyPersonal = acc.isPersonal && !acc.signIn && accounts.filter((a) => a.isPersonal).length === 1;
+    const onlyPersonal = acc.isPersonal && !acc.signIn && personalCount === 1;
     const tagged = !onlyPersonal;
     if (!tagged && !color) return null;
     return { label: tagged ? accountLooks[acc.id]?.name || acc.name.split("@")[0] : undefined, title: acc.name, color };
