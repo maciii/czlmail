@@ -223,6 +223,14 @@ export function ComposePane({ accountId, draft, onClose, onSent, leaveRef, sourc
   const editRevision = useRef(0);
   const saving = useRef<Promise<boolean> | null>(null);
   const aiAbort = useRef<AbortController | null>(null);
+  // 保存是"建新删旧": 旧草稿删掉后, 它的部件 blob 在有的服务器 (czlmail-gateway) 上随之失效。
+  // 这里记下每次保存后附件换成的新 blob, 之后的保存与发送都改用新的 (state 可能还没更新, 闭包里是旧值)。
+  const movedBlobs = useRef(new Map<string, string>());
+  const currentBlob = (blobId: string) => {
+    let id = blobId;
+    for (let i = 0; i < 32 && movedBlobs.current.has(id); i++) id = movedBlobs.current.get(id)!;
+    return id;
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -319,8 +327,8 @@ export function ComposePane({ accountId, draft, onClose, onSent, leaveRef, sourc
       inReplyTo: draft.inReplyTo ?? "",
       references: draft.references ?? [],
       attachments: [
-        ...attachments.map((a) => ({ blobId: a.blobId, type: a.type, name: a.name, cid: "" })),
-        ...inlineParts.map((p) => ({ blobId: p.blobId, type: p.type, name: p.name, cid: p.cid })),
+        ...attachments.map((a) => ({ blobId: currentBlob(a.blobId), type: a.type, name: a.name, cid: "" })),
+        ...inlineParts.map((p) => ({ blobId: currentBlob(p.blobId), type: p.type, name: p.name, cid: p.cid })),
       ],
       draftId: draftId.current,
       draftAccountId: draftAccount.current,
@@ -329,6 +337,19 @@ export function ComposePane({ accountId, draft, onClose, onSent, leaveRef, sourc
       sendSeparately: separately,
       sign: canSign && sign,
     });
+  }
+
+  /** 保存后附件改指向新草稿里的部件; 与 req.attachments 一一对应。不算改动, 不触发再次保存。 */
+  function rebindBlobs(sent: main.AttachmentRef[], saved: main.AttachmentRef[]) {
+    const moved = new Map<string, string>();
+    sent.forEach((a, i) => {
+      const next = saved[i]?.blobId;
+      if (a.blobId && next && next !== a.blobId) moved.set(a.blobId, next);
+    });
+    if (moved.size === 0) return;
+    for (const [from, to] of moved) movedBlobs.current.set(from, to);
+    setAttachments((prev) => prev.map((a) => ({ ...a, blobId: currentBlob(a.blobId) })) as UploadedAttachment[]);
+    setInlineParts((prev) => prev.map((p) => ({ ...p, blobId: currentBlob(p.blobId) })));
   }
 
   const hasContent = hasDraftContent(to, cc, bcc, subject, !isHtmlEmpty(html), attachments.length);
@@ -345,8 +366,10 @@ export function ComposePane({ accountId, draft, onClose, onSent, leaveRef, sourc
       await prev;
       try {
         const req = buildRequest();
-        draftId.current = await api.saveDraft(req);
+        const saved = await api.saveDraftRefs(req);
+        draftId.current = saved.draftId;
         draftAccount.current = req.accountId;
+        rebindBlobs(req.attachments ?? [], saved.attachments ?? []);
         return true;
       } catch (err) {
         dirty.current = true;
@@ -624,8 +647,8 @@ export function ComposePane({ accountId, draft, onClose, onSent, leaveRef, sourc
     // 正在进行的保存用的是原账号, 等它落地, 草稿 id 与所在账号才对得上。
     await saving.current;
     const refs = [
-      ...attachments.map((a) => main.AttachmentRef.createFrom({ blobId: a.blobId, type: a.type, name: a.name, cid: "" })),
-      ...inlineParts.map((p) => main.AttachmentRef.createFrom({ blobId: p.blobId, type: p.type, name: p.name, cid: p.cid })),
+      ...attachments.map((a) => main.AttachmentRef.createFrom({ blobId: currentBlob(a.blobId), type: a.type, name: a.name, cid: "" })),
+      ...inlineParts.map((p) => main.AttachmentRef.createFrom({ blobId: currentBlob(p.blobId), type: p.type, name: p.name, cid: p.cid })),
     ];
     if (refs.length > 0) {
       setUploading(true);

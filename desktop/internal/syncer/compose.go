@@ -336,40 +336,140 @@ func (s *Syncer) createForSigning(ctx context.Context, d Draft, msg *email.Email
 	return "", "", &Error{Code: CodeUnhandled, Msg: "server did not return the draft's blob id"}
 }
 
+// SavedDraft 是保存草稿的结果。
+type SavedDraft struct {
+	ID string
+	// Attachments 与 Draft.Attachments 一一对应, BlobID 换成新草稿里对应部件的 blob。
+	Attachments []Attachment
+}
+
 // SaveDraft 把邮件存进草稿箱并返回新草稿 id; ReplaceDraftID 指向的旧版本随后删除。
 // JMAP 的邮件内容不可修改, 更新草稿只能"建新删旧"。
-func (s *Syncer) SaveDraft(ctx context.Context, d Draft, draftMailboxID string) (string, error) {
+//
+// 附件引用旧草稿的部件时, 旧草稿删掉后这些 blob 在有的服务器上随之失效
+// (czlmail-gateway 的部件 blob id 由邮件 id 与部件号组成; Stalwart 按内容寻址, 不受影响)。
+// 所以同时返回新草稿里的附件引用, 之后的保存与发送要用它们, 否则服务器报 blobNotFound。
+func (s *Syncer) SaveDraft(ctx context.Context, d Draft, draftMailboxID string) (SavedDraft, error) {
 	if draftMailboxID == "" {
-		return "", fmt.Errorf("1122 drafts mailbox not found")
+		return SavedDraft{}, fmt.Errorf("1122 drafts mailbox not found")
 	}
 	msg := buildEmail(d, draftMailboxID)
 	req := &jmap.Request{Context: ctx}
 	createArgs, err := s.emailCreate(d, msg)
 	if err != nil {
-		return "", err
+		return SavedDraft{}, err
 	}
 	req.Invoke(createArgs)
 	resp, err := s.do(req)
 	if err != nil {
-		return "", err
+		return SavedDraft{}, err
 	}
 	set, ok := resp.Responses[0].Args.(*email.SetResponse)
 	if !ok {
-		return "", &Error{Code: CodeUnhandled, Msg: "unexpected response to Email/set"}
+		return SavedDraft{}, &Error{Code: CodeUnhandled, Msg: "unexpected response to Email/set"}
 	}
 	if err := firstSetError(set.NotCreated); err != nil {
-		return "", err
+		return SavedDraft{}, err
 	}
 	created := set.Created["draft"]
 	if created == nil {
-		return "", &Error{Code: CodeUnhandled, Msg: "draft not created"}
+		return SavedDraft{}, &Error{Code: CodeUnhandled, Msg: "draft not created"}
+	}
+	saved := SavedDraft{ID: string(created.ID), Attachments: d.Attachments}
+	if len(d.Attachments) > 0 {
+		if got, err := s.emailAttachments(ctx, d.AccountID, created.ID); err != nil {
+			// 草稿已存好, 只是拿不到新引用; 沿用旧引用, 下一次保存再试。
+			s.log.Warn("read attachments of saved draft", "err", err)
+		} else {
+			saved.Attachments = rebindAttachments(d.Attachments, got)
+		}
 	}
 	if d.ReplaceDraftID != "" && d.ReplaceDraftID != string(created.ID) {
 		if err := s.destroyEmail(ctx, d.AccountID, d.ReplaceDraftID); err != nil {
 			s.log.Warn("destroy replaced draft", "err", err)
 		}
 	}
-	return string(created.ID), s.SyncMail(ctx, d.AccountID)
+	return saved, s.SyncMail(ctx, d.AccountID)
+}
+
+// emailAttachments 读取一封邮件的附件 (含内嵌部件) 引用。
+func (s *Syncer) emailAttachments(ctx context.Context, accountID string, id jmap.ID) ([]Attachment, error) {
+	req := &jmap.Request{Context: ctx}
+	req.Invoke(&email.Get{
+		Account:        s.server(accountID),
+		IDs:            []jmap.ID{id},
+		Properties:     []string{"attachments"},
+		BodyProperties: []string{"blobId", "type", "name", "cid"},
+	})
+	resp, err := s.do(req)
+	if err != nil {
+		return nil, err
+	}
+	got, ok := resp.Responses[0].Args.(*email.GetResponse)
+	if !ok || len(got.List) != 1 {
+		return nil, &Error{Code: CodeUnhandled, Msg: "saved draft not found"}
+	}
+	out := make([]Attachment, 0, len(got.List[0].Attachments))
+	for _, p := range got.List[0].Attachments {
+		out = append(out, Attachment{BlobID: string(p.BlobID), Type: p.Type, Name: p.Name, CID: p.CID})
+	}
+	return out, nil
+}
+
+// rebindAttachments 把发出去的附件引用对应到新草稿里的部件, 返回换了 BlobID 的副本 (顺序与 sent 一致)。
+// 先按 cid + 文件名 + 类型配对, 再按 cid + 文件名; 仍剩下的只在两边个数相同时按顺序配对
+// 且每一对类型相同 (服务器改写了文件名时), 否则保持原引用 —— 宁可留着旧 blob, 也不把附件张冠李戴。
+func rebindAttachments(sent, got []Attachment) []Attachment {
+	out := append([]Attachment(nil), sent...)
+	used := make([]bool, len(got))
+	done := make([]bool, len(sent))
+	cid := func(a Attachment) string { return strings.Trim(a.CID, "<>") }
+	match := func(same func(a, b Attachment) bool) {
+		for i, a := range sent {
+			if done[i] || a.BlobID == "" {
+				continue
+			}
+			for j, b := range got {
+				if !used[j] && b.BlobID != "" && cid(a) == cid(b) && same(a, b) {
+					out[i].BlobID, used[j], done[i] = b.BlobID, true, true
+					break
+				}
+			}
+		}
+	}
+	match(func(a, b Attachment) bool { return a.Name == b.Name && strings.EqualFold(a.Type, b.Type) })
+	match(func(a, b Attachment) bool { return a.Name == b.Name })
+	// 按顺序配对: 内嵌部件与普通附件分开, 各自剩下的个数相同才做。
+	for _, inline := range []bool{false, true} {
+		var rest, free []int
+		for i, a := range sent {
+			if !done[i] && a.BlobID != "" && (cid(a) != "") == inline {
+				rest = append(rest, i)
+			}
+		}
+		for j, b := range got {
+			if !used[j] && b.BlobID != "" && (cid(b) != "") == inline {
+				free = append(free, j)
+			}
+		}
+		if len(rest) == 0 || len(rest) != len(free) {
+			continue
+		}
+		// 按顺序对上的每一对类型也要相同: 服务器既改了文件名又调换了顺序时宁可不配, 不把附件张冠李戴。
+		sameTypes := true
+		for k, i := range rest {
+			if !strings.EqualFold(sent[i].Type, got[free[k]].Type) {
+				sameTypes = false
+			}
+		}
+		if !sameTypes {
+			continue
+		}
+		for k, i := range rest {
+			out[i].BlobID, used[free[k]] = got[free[k]].BlobID, true
+		}
+	}
+	return out
 }
 
 // emailCreate 构造 Email/set 的创建调用。go-jmap 的 Email 结构体表达不了
