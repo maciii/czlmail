@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"mime"
@@ -9,6 +10,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/woodchen-ink/czlmail/desktop/internal/imgcache"
 )
 
 // 附件: 预览、保存、上传。
@@ -56,16 +59,24 @@ func (a *App) serveBlob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 图片(正文里的 cid 内嵌图片、附件缩略图)走磁盘缓存, 再打开邮件不重新下载。.eml 的部件本来就在内存里。
-	if !isEmlID(blobID) && strings.HasPrefix(contentType, "image/") && previewableTypes[contentType] {
-		data, err := a.cachedBlob(r.Context(), accountID, blobID)
+	if strings.HasPrefix(contentType, "image/") && previewableTypes[contentType] {
+		data, err := a.previewImage(r.Context(), accountID, blobID)
 		if err != nil {
 			http.Error(w, "download failed", http.StatusBadGateway)
+			return
+		}
+		// 类型以内容为准: 有的发件方把正文图片标成 application/octet-stream,
+		// 界面只能按文件名猜成图片。猜错了(内容不是图片)就不当图片返回。
+		// ImageType 只认位图格式 (声明为空时不认 SVG), 不会放出能执行脚本的类型。
+		sniffed := imgcache.ImageType(data, "")
+		if sniffed == "" {
+			http.Error(w, "not an image", http.StatusUnsupportedMediaType)
 			return
 		}
 		h := w.Header()
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Cache-Control", noStore)
-		h.Set("Content-Type", contentType)
+		h.Set("Content-Type", sniffed)
 		h.Set("Content-Security-Policy", "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'")
 		w.Write(data)
 		return
@@ -95,6 +106,19 @@ func (a *App) serveBlob(w http.ResponseWriter, r *http.Request) {
 	if _, err := io.Copy(w, io.LimitReader(rc, maxPreviewBytes)); err != nil {
 		a.log.Warn("serve blob", "err", err)
 	}
+}
+
+// previewImage 读要按图片预览的部件: 服务器上的 blob 走磁盘缓存, .eml 的部件在内存里直接读。
+func (a *App) previewImage(ctx context.Context, accountID, blobID string) ([]byte, error) {
+	if !isEmlID(blobID) {
+		return a.cachedBlob(ctx, accountID, blobID)
+	}
+	rc, err := a.openBlob(accountID, blobID)
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+	return io.ReadAll(io.LimitReader(rc, maxPreviewBytes))
 }
 
 // SaveAttachment 把附件保存到用户选择的位置。返回保存路径, 用户取消时返回空串。

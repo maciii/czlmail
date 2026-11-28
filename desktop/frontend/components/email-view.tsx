@@ -462,10 +462,11 @@ export function EmailView({
   const inlineImages = useMemo(() => {
     const map: Record<string, string> = {};
     for (const a of email?.attachments ?? []) {
-      if (a.cid && a.type.startsWith("image/")) {
+      const type = inlineImageType(a);
+      if (a.cid && type) {
         map[a.cid.toLowerCase()] =
           // 桌面端 blobUrl 是相对路径, iOS 是 czl-local:// 的完整地址: 按页面源解析, 完整地址原样保留。
-          new URL(blobUrl(accountId, a), window.location.origin).href;
+          new URL(blobUrl(accountId, { ...a, type }), window.location.origin).href;
       }
     }
     return map;
@@ -829,4 +830,26 @@ function EmailMarks({ email, labels, actions }: { email: EmailDetail; labels: st
       )}
     </div>
   );
+}
+
+const IMAGE_EXT: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  bmp: "image/bmp",
+};
+
+/**
+ * cid 内嵌图片的类型。有的发件方(如快递公司的通知)把正文图片作为附件发出,
+ * 类型写成 application/octet-stream, 只有文件名看得出是图片: 这时按扩展名猜。
+ * 猜错不会出事: 预览路径按内容嗅探, 不是图片就不返回。
+ */
+function inlineImageType(a: { type: string; name?: string }): string {
+  const type = a.type.split(";")[0].trim().toLowerCase();
+  if (type.startsWith("image/")) return a.type;
+  if (type && type !== "application/octet-stream") return "";
+  const ext = /\.([a-z0-9]+)$/i.exec(a.name ?? "")?.[1]?.toLowerCase() ?? "";
+  return IMAGE_EXT[ext] ?? "";
 }
