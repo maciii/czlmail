@@ -1487,5 +1487,7 @@
   "今天 {0} 到期": "Due today at {0}",
   "找不到这个任务，可能已被删除": "This task could not be found. It may have been deleted.",
   "重复": "Repeats",
-  "待办|module": "To-do"
+  "待办|module": "To-do",
+  "拖动左边的手柄调整顺序，侧栏与「全部账号」按这个顺序显示。": " Drag the handle on the left to change the order; the sidebar and All accounts follow it.",
+  "拖动或按 ↑↓ 调整顺序": "Drag or press ↑↓ to reorder"
 }

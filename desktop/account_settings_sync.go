@@ -16,7 +16,7 @@ import (
 	"github.com/woodchen-ink/czlmail/desktop/internal/store"
 )
 
-// 账户类的同步设置: 账号的名字与颜色 (设置 → 账户 → 可访问的邮箱), 以及侧栏「收藏」里的文件夹。
+// 账户类的同步设置: 账号的名字与颜色 (设置 → 账户 → 可访问的邮箱), 账号的先后 (account_order.go), 以及侧栏「收藏」里的文件夹。
 // 名字与颜色是用户给账号、给附加登录在侧栏里那一节起的名字与挑的颜色; 服务器上的账号名不变, 只影响本程序的显示。
 //
 // 跨设备同步: 存成个人网盘的 CZL Mail/account-settings.json (网盘里一类设置一个文件, 读写见 drive_sync.go),
@@ -272,6 +272,14 @@ type accountSettingsFile struct {
 	ExportedAt string                             `json:"exportedAt"`
 	Looks      map[string]accountSettingsLook     `json:"looks"`
 	Favorites  map[string]accountSettingsFavorite `json:"favorites"`
+	// Order 是账号与登录的先后 (account_order.go); 没排过时没有这一项。
+	Order *accountSettingsOrder `json:"order,omitempty"`
+}
+
+// accountSettingsOrder 是文件里账号与登录的先后, 键是同步键; 空列表是墓碑 (恢复了默认顺序)。
+type accountSettingsOrder struct {
+	Keys      []string `json:"keys"`
+	UpdatedAt string   `json:"updatedAt"`
 }
 
 // accountSettingsLook 是文件里的一条名字与颜色; 名字与颜色都空是墓碑。
@@ -318,6 +326,7 @@ func (a *App) syncAccountSettingsOnce() error {
 	}
 	remoteLooks := map[string]store.TimedSetting{}
 	remoteFavorites := map[string]store.TimedSetting{}
+	remoteOrder := map[string]store.TimedSetting{}
 	if data != nil {
 		var f accountSettingsFile
 		if err := json.Unmarshal(data, &f); err != nil || f.Type != accountSettingsFileType {
@@ -335,6 +344,12 @@ func (a *App) syncAccountSettingsOnce() error {
 				v = ""
 			}
 			remoteFavorites[k] = store.TimedSetting{Value: v, UpdatedAt: parseISO(e.UpdatedAt)}
+		}
+		if f.Order != nil {
+			remoteOrder[accountOrderName] = store.TimedSetting{
+				Value:     encodeAccountOrder(f.Order.Keys),
+				UpdatedAt: parseISO(f.Order.UpdatedAt),
+			}
 		}
 	}
 
@@ -361,6 +376,10 @@ func (a *App) syncAccountSettingsOnce() error {
 	if err != nil {
 		return err
 	}
+	order, err := merge(accountOrderPrefix, remoteOrder)
+	if err != nil {
+		return err
+	}
 
 	if len(changes) > 0 {
 		if err := st.WithTx(ctx, func(tx *sql.Tx) error {
@@ -374,6 +393,10 @@ func (a *App) syncAccountSettingsOnce() error {
 			return err
 		}
 		a.emit(EventSettingsChanged)
+		if _, ok := changes[accountOrderKey]; ok {
+			// 先后由 ListAccounts 排, 界面听账号变更重读列表。
+			a.emit(EventAccountsChanged)
+		}
 	}
 
 	if !remoteChanged && file.exists() {
@@ -390,6 +413,12 @@ func (a *App) syncAccountSettingsOnce() error {
 	}
 	for k, v := range favorites {
 		out.Favorites[k] = accountSettingsFavorite{Removed: v.Value == "", UpdatedAt: isoTime(v.UpdatedAt)}
+	}
+	if v, ok := order[accountOrderName]; ok {
+		out.Order = &accountSettingsOrder{Keys: decodeAccountOrder(v.Value), UpdatedAt: isoTime(v.UpdatedAt)}
+		if out.Order.Keys == nil {
+			out.Order.Keys = []string{}
+		}
 	}
 	body, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {

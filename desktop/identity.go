@@ -69,9 +69,9 @@ func (a *App) ensureCacheOwner(ctx context.Context, st *store.Store, cfg config.
 	} else if err := st.ResetIdentityData(ctx, identitySettings()); err != nil {
 		return err
 	}
-	// 账号名与颜色、收藏的文件夹、附加登录的同步记录同步自主登录的网盘 (account-settings.json、sign-ins.json),
+	// 账号名与颜色、先后、收藏的文件夹、附加登录的同步记录同步自主登录的网盘 (account-settings.json、sign-ins.json),
 	// 换了人改从新网盘取, 上一个人的不留: 留着的墓碑会让新网盘那边的设备移除登录。
-	for _, prefix := range []string{accountLookPrefix, favoriteFolderPrefix, syncedSignInPrefix} {
+	for _, prefix := range []string{accountLookPrefix, accountOrderPrefix, favoriteFolderPrefix, syncedSignInPrefix} {
 		if err := st.DeleteSettingsWithPrefix(ctx, prefix); err != nil {
 			return err
 		}

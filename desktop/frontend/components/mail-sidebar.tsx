@@ -3,7 +3,7 @@
 import { t, tContext } from "@/lib/i18n";
 import { useI18n } from "@/components/locale-provider";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ChevronDown, ExternalLink, MailWarning, Plus, UserRound } from "lucide-react";
 
@@ -380,6 +380,59 @@ export function MailSidebar({
         ))
       : renderAccounts(list, true);
 
+  // 主登录占「文件夹」「共享」两节, 其余登录各一节; 先后照账号列表 (设置 → 账户里可以拖动调整, 主登录也能往后放)。
+  const signInOrder = [...new Set(accounts.map((a) => a.signIn))];
+  const primarySections = (
+    <>
+      {personal.length > 0 && (
+        <Section
+          // 主登录只有一个个人邮箱且用户给它起了名字 (设置 → 账户): 节标题用这个名字, 否则照旧「文件夹」。
+          title={(personal.length === 1 && looks[personal[0].id]?.name) || tContext("heading", "文件夹")}
+          color={personal.length === 1 ? accountColor(personal[0].id, looks) : undefined}
+          open={!isCollapsed("personal")}
+          onToggle={() => toggle("personal")}
+          unread={sumInbox(personal)}
+          onAdd={ownGrouped(personal) ? undefined : () => setFolderAction({ kind: "create", accountId: personal[0].id })}
+          headerProps={dragExpand("personal")}
+        >
+          {renderOwn(personal)}
+        </Section>
+      )}
+
+      {shared.length > 0 && (
+        <Section
+          title={t("共享")}
+          open={!isCollapsed("shared")}
+          onToggle={() => toggle("shared")}
+          unread={sumInbox(shared)}
+          headerProps={dragExpand("shared")}
+        >
+          {renderAccounts(shared)}
+        </Section>
+      )}
+    </>
+  );
+  const renderSignIn = (id: string) => {
+    const g = otherSignIns.find((x) => x.id === id);
+    if (!g) return null;
+    const key = `signin:${g.id}`;
+    return (
+      <Section
+        key={key}
+        title={g.title}
+        color={g.own.length === 1 && !g.own[0].upstream ? accountColor(g.own[0].id, looks) : undefined}
+        open={!isCollapsed(key)}
+        onToggle={() => toggle(key)}
+        unread={sumInbox(g.list)}
+        onAdd={g.own.length > 0 && !ownGrouped(g.own) ? () => setFolderAction({ kind: "create", accountId: g.own[0].id }) : undefined}
+        headerProps={dragExpand(key)}
+      >
+        {renderOwn(g.own)}
+        {renderAccounts(g.shared)}
+      </Section>
+    );
+  };
+
   if (syncing && allBoxes.length === 0) return <SidebarSkeleton />;
 
   return (
@@ -504,50 +557,7 @@ export function MailSidebar({
         </Section>
       )}
 
-      {personal.length > 0 && (
-        <Section
-          // 主登录只有一个个人邮箱且用户给它起了名字 (设置 → 账户): 节标题用这个名字, 否则照旧「文件夹」。
-          title={(personal.length === 1 && looks[personal[0].id]?.name) || tContext("heading", "文件夹")}
-          color={personal.length === 1 ? accountColor(personal[0].id, looks) : undefined}
-          open={!isCollapsed("personal")}
-          onToggle={() => toggle("personal")}
-          unread={sumInbox(personal)}
-          onAdd={ownGrouped(personal) ? undefined : () => setFolderAction({ kind: "create", accountId: personal[0].id })}
-          headerProps={dragExpand("personal")}
-        >
-          {renderOwn(personal)}
-        </Section>
-      )}
-
-      {shared.length > 0 && (
-        <Section
-          title={t("共享")}
-          open={!isCollapsed("shared")}
-          onToggle={() => toggle("shared")}
-          unread={sumInbox(shared)}
-          headerProps={dragExpand("shared")}
-        >
-          {renderAccounts(shared)}
-        </Section>
-      )}
-      {otherSignIns.map((g) => {
-        const key = `signin:${g.id}`;
-        return (
-          <Section
-            key={key}
-            title={g.title}
-            color={g.own.length === 1 && !g.own[0].upstream ? accountColor(g.own[0].id, looks) : undefined}
-            open={!isCollapsed(key)}
-            onToggle={() => toggle(key)}
-            unread={sumInbox(g.list)}
-            onAdd={g.own.length > 0 && !ownGrouped(g.own) ? () => setFolderAction({ kind: "create", accountId: g.own[0].id }) : undefined}
-            headerProps={dragExpand(key)}
-          >
-            {renderOwn(g.own)}
-            {renderAccounts(g.shared)}
-          </Section>
-        );
-      })}
+      {signInOrder.map((id) => (id ? renderSignIn(id) : <Fragment key="primary">{primarySections}</Fragment>))}
 
       <FolderDialog
         action={folderAction}

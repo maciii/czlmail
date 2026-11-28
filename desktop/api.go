@@ -81,7 +81,8 @@ func (a *App) SignOut() error {
 	return a.signOutOf(&a.primary)
 }
 
-// ListAccounts 列出全部账号: 按登录分组 (主登录在前, 其余按添加顺序), 组内个人账号在前。
+// ListAccounts 列出全部账号: 按登录分组 (默认主登录在前, 其余按添加顺序), 组内个人账号在前;
+// 用户在设置里排过先后时按它排 (见 account_order.go)。
 func (a *App) ListAccounts() ([]store.Account, error) {
 	st, err := a.currentStore()
 	if err != nil {
@@ -99,18 +100,16 @@ func (a *App) ListAccounts() ([]store.Account, error) {
 		hosts[si.id] = si.cfg.ServerHost
 	}
 	a.mu.RUnlock()
-	rank := func(id string) int {
-		if i, ok := order[id]; ok {
-			return i
-		}
-		return len(order) // 登录已移除、缓存还没删完的账号排最后
-	}
 	for i := range list {
 		list[i].SignIn, _ = accountid.Split(list[i].ID)
 		list[i].SignInHost = hosts[list[i].SignIn]
 	}
+	signIns := map[string]lookSignIn{}
+	for _, si := range a.lookSignIns() {
+		signIns[si.id] = si
+	}
 	// 稳定排序保留库里的「个人在前、按名称」。
-	slices.SortStableFunc(list, func(x, y store.Account) int { return rank(x.SignIn) - rank(y.SignIn) })
+	sortAccounts(list, a.storedAccountOrder(st), signIns, order)
 	return list, nil
 }
 
