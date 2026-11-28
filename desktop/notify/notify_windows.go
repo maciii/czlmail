@@ -5,6 +5,7 @@ package notify
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -139,3 +140,40 @@ func (n *windowsNotifier) OnActivated(fn func(string)) {
 }
 
 func (n *windowsNotifier) Close() error { return nil }
+
+// Unregister 删掉 New 写进注册表的通知登记 (显示名、图标与点击唤起路径), 给「删除所有数据」用。
+// 不存在的项不算错。
+func Unregister(appID string) error {
+	if appID == "" {
+		appID = defaultAppID
+	}
+	return errors.Join(
+		deleteKeyTree(appModelKey+appID),
+		deleteKeyTree(`Software\Classes\CLSID\`+activatorGUID(appID)),
+	)
+}
+
+// deleteKeyTree 删除 HKCU 下的一个键及其子键。
+func deleteKeyTree(path string) error {
+	k, err := registry.OpenKey(registry.CURRENT_USER, path, registry.ENUMERATE_SUB_KEYS)
+	if errors.Is(err, registry.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	subs, err := k.ReadSubKeyNames(-1)
+	k.Close()
+	if err != nil {
+		return err
+	}
+	for _, sub := range subs {
+		if err := deleteKeyTree(path + `\` + sub); err != nil {
+			return err
+		}
+	}
+	if err := registry.DeleteKey(registry.CURRENT_USER, path); err != nil && !errors.Is(err, registry.ErrNotExist) {
+		return err
+	}
+	return nil
+}

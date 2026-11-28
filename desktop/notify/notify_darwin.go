@@ -120,3 +120,6 @@ func quoteAppleScript(s string) string {
 	s = strings.ReplaceAll(s, "\r", " ")
 	return `"` + s + `"`
 }
+
+// Unregister 只在 Windows 上有事可做 (通知登记在注册表里)。
+func Unregister(string) error { return nil }
