@@ -66,7 +66,7 @@ import {
 } from "@/lib/api";
 import { fileSize } from "@/lib/format";
 import { isSendShortcut, sendShortcutText } from "@/lib/shortcuts";
-import { htmlToText, isHtmlEmpty, sanitizeInline, textToHtml } from "@/lib/html";
+import { editorHtmlToEmail, htmlToText, isHtmlEmpty, sanitizeInline, textToEditorHtml, textToHtml } from "@/lib/html";
 import { allowDraftLeave, hasDraftContent } from "@/lib/draft-transition";
 import { onFileDrop } from "@/lib/file-drop";
 import { main, store } from "@/wailsjs/go/models";
@@ -303,7 +303,7 @@ export function ComposePane({ accountId, draft, onClose, onSent, leaveRef, sourc
   }, []);
 
   function buildRequest(): main.ComposeRequest {
-    const parts = [html];
+    const parts = [editorHtmlToEmail(html)];
     if (signatureHtml) parts.push((separator ? "<p>-- </p>" : "") + `<div class="signature">${signatureHtml}</div>`);
     if (draft.quoteHtml) parts.push(sanitizeInline(draft.quoteHtml));
     const fullHtml = parts.join("");
@@ -457,7 +457,7 @@ export function ComposePane({ accountId, draft, onClose, onSent, leaveRef, sourc
       const recipient = parseAddresses(to)[0];
       const fill = await api.applyTemplate(template.id, {}, recipient?.name || "");
       if (fill.subject && !subject.trim()) setSubject(fill.subject);
-      const body = fill.isHtml ? fill.body : textToHtml(fill.body);
+      const body = fill.isHtml ? fill.body : textToEditorHtml(fill.body);
       editorRef.current?.commands.setContent(body + (isHtmlEmpty(html) ? "" : html));
       if (!to.trim() && fill.to?.length) setTo(fill.to.join(", "));
       if (!cc.trim() && fill.cc?.length) {
@@ -558,7 +558,7 @@ export function ComposePane({ accountId, draft, onClose, onSent, leaveRef, sourc
 
   function applyAI(mode: "replace" | "insert") {
     if (!aiPanel || !editorRef.current) return;
-    const generated = textToHtml(aiPanel.text.trim());
+    const generated = textToEditorHtml(aiPanel.text.trim());
     if (mode === "replace") editorRef.current.commands.setContent(generated, { emitUpdate: true });
     else editorRef.current.chain().focus().insertContent(generated).run();
     markDirty();
