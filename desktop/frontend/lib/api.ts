@@ -319,6 +319,7 @@ export const api = {
   saveAddressBook: guard(App.SaveAddressBook),
   saveCalendar: guard(App.SaveCalendar),
   saveDraft: guard(App.SaveDraft),
+  saveDraftRefs: guard(App.SaveDraftRefs),
   saveFilters: guard(App.SaveFilters),
   saveSieveScript: guard(App.SaveSieveScript),
   saveTask: guard(App.SaveTask),
