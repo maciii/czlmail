@@ -40,14 +40,20 @@ const imageCases = [
     style="width:150px;height:150px" src="${svg(150, 150)}"></td></tr></table>`, ["100x100"]],
 ];
 
+// Outlook 发出的 HTML 骨架: 样式表整段包在注释记号里。
+const outlookMail = `<html><head><style><!--
+p.MsoNormal, li.MsoNormal {margin:0cm; font-size:11.0pt; font-family:"Calibri",sans-serif;}
+--></style></head><body lang="CS"><div class="WordSection1"><p class="MsoNormal">Dobrý den,<o:p></o:p></p>
+<p class="MsoNormal"><o:p>&nbsp;</o:p></p><p class="MsoNormal">děkuji.<o:p></o:p></p></div></body></html>`;
+
 async function main() {
   const fixture = process.argv[2];
   const mail = fixture ? fs.readFileSync(fixture, "utf8") : `<style>html, body { height: 100%; }</style>
     <table style="border-spacing:0;width:100%"><tr><td style="padding:0">
       <div style="height:560px">Notification</div><div style="height:40px">Footer</div>
     </td></tr></table>`;
-  const sanitizer = fixture ? compile(fs.readFileSync(path.join(__dirname, "../lib/sanitize-email.ts"), "utf8")
-    .replace(/^import .*;$/gm, "").replace(/\bexport /g, "")) : "";
+  const sanitizer = compile(fs.readFileSync(path.join(__dirname, "../lib/sanitize-email.ts"), "utf8")
+    .replace(/^import .*;$/gm, "").replace(/\bexport /g, ""));
   let finish;
   const result = new Promise((resolve) => { finish = resolve; });
   const server = http.createServer(async (req, res) => {
@@ -104,7 +110,9 @@ async function main() {
             images.push([name, sizes]);
             f.remove();
           }
-          await fetch('/result', { method: 'POST', body: JSON.stringify({ heights, images }) });
+          // Outlook (Word) 把样式表包在 <!-- --> 里: 清洗后规则要留下, 否则 MsoNormal 段落都多出 1em 间距。
+          const outlook = sanitizeEmailHtml(${json(outlookMail)}, false).html;
+          await fetch('/result', { method: 'POST', body: JSON.stringify({ heights, images, outlook }) });
         })();
       </script>`);
     }
@@ -115,7 +123,7 @@ async function main() {
     `--user-data-dir=${dir}`, `http://127.0.0.1:${server.address().port}`], { stdio: "ignore" });
   let timer;
   try {
-    const { heights, images } = await Promise.race([result, new Promise((_, reject) => {
+    const { heights, images, outlook } = await Promise.race([result, new Promise((_, reject) => {
       timer = setTimeout(() => reject(new Error("Timed out waiting for Chromium")), 12000);
       child.once("error", reject);
     })]);
@@ -125,6 +133,8 @@ async function main() {
       assert.deepEqual(heights, [600, 750, 600]);
       assert.deepEqual(images, imageCases.map(([name, , , sizes]) => [name, sizes]));
     }
+    assert.match(outlook, /p\.MsoNormal[^{]*\{[^}]*margin:\s*0cm/, "Outlook style rules were dropped");
+    assert.doesNotMatch(outlook, /<!--|-->/);
     console.log("Email body heights (normal, enlarged, restored):", heights.join(", "));
     for (const [name, sizes] of images) console.log(`Images (${name}):`, sizes.join(", "));
   } finally {
