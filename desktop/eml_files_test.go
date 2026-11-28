@@ -20,7 +20,7 @@ const emlSample = "From: Bob <bob@example.com>\r\n" +
 	"Content-Type: image/png\r\n" +
 	"Content-ID: <img@x>\r\n" +
 	"\r\n" +
-	"\x89PNGdata\r\n" +
+	"\x89PNG\r\n\x1a\ndata\r\n" +
 	"--r\r\n" +
 	"Content-Type: text/html; name=page.html\r\n" +
 	"Content-Disposition: attachment; filename=page.html\r\n" +
