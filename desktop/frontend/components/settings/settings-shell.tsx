@@ -71,7 +71,7 @@ import {
   type UpdateInfo,
 } from "@/lib/api";
 import { forgetCachedEmails } from "@/lib/email-cache";
-import { anyAccountSupports, useAccounts as useAllAccounts, usePrimarySupports, type Feature } from "@/lib/account-features";
+import { anyAccountSupports, primaryPersonal, useAccounts as useAllAccounts, usePrimarySupports, type Feature } from "@/lib/account-features";
 import { BrowserOpenURL } from "@/wailsjs/runtime/runtime";
 import { NotesSection } from "@/components/settings/notes-section";
 import { AISection } from "@/components/settings/ai-section";
@@ -306,7 +306,8 @@ function PrivacySection({ active }: { active: boolean }) {
   const load = useCallback(async () => {
     try {
       const accounts = (await api.listAccounts()) ?? [];
-      const personal = accounts.find((a) => a.isPersonal) ?? accounts[0];
+      // 信任名单只跟主登录走 (后端 personalAccountID), 账号排过先后时第一个个人账号不一定是它。
+      const personal = primaryPersonal(accounts) ?? accounts[0];
       if (!personal) return;
       setAccountId(personal.id);
       setSenders((await api.listTrustedSenders(personal.id)) ?? []);

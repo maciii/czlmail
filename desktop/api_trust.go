@@ -202,6 +202,9 @@ type AppSettings struct {
 	WarnMissingAttachment bool `json:"warnMissingAttachment"`
 	// DefaultIdentities 是 账号 id → 默认发件身份 id。
 	DefaultIdentities map[string]string `json:"defaultIdentities"`
+	// DefaultComposeAccount 是「全部账号」里新写的信默认用的个人账号 (本机账号 id); 空为主登录的个人账号。
+	// 只存本机 (本机账号 id 各设备不同), 账号不在了时界面退回主登录。
+	DefaultComposeAccount string `json:"defaultComposeAccount"`
 	// MutedMailAccounts 是关闭了新邮件通知的账号(多为共享邮箱)。
 	MutedMailAccounts []string `json:"mutedMailAccounts"`
 	// UnifiedExcludedAccounts 是不并入侧栏「全部账号」的账号 (如出站归档这类只偶尔查看的共享邮箱)。
@@ -248,6 +251,7 @@ func (a *App) GetSettings() (AppSettings, error) {
 	if v, err := st.StringSetting(a.ctx, "defaultIdentities"); err == nil {
 		_ = json.Unmarshal([]byte(v), &s.DefaultIdentities)
 	}
+	s.DefaultComposeAccount, _ = st.StringSetting(a.ctx, settingDefaultCompose)
 	s.MutedMailAccounts = a.accountListSetting(st, "mutedMailAccounts")
 	s.UnifiedExcludedAccounts = a.accountListSetting(st, settingUnifiedExcluded)
 	raw, _ := st.StringSetting(a.ctx, settingSmime)
@@ -282,6 +286,9 @@ func (a *App) SaveSettings(s AppSettings) error {
 	if err := st.SetStringSetting(a.ctx, "defaultIdentities", string(ids)); err != nil {
 		return err
 	}
+	if err := st.SetStringSetting(a.ctx, settingDefaultCompose, s.DefaultComposeAccount); err != nil {
+		return err
+	}
 	// 旧前端不认识这个字段, 发来的是 nil: 不覆盖已有设置。
 	if s.SmimeSigning != nil {
 		smimeRaw, _ := json.Marshal(normalizeSmime(s.SmimeSigning))
@@ -307,6 +314,9 @@ func (a *App) SaveSettings(s AppSettings) error {
 	a.planRemindersSoon(false)
 	return nil
 }
+
+// settingDefaultCompose 存「全部账号」里新写的信默认用的账号 (AppSettings.DefaultComposeAccount)。
+const settingDefaultCompose = "defaultComposeAccount"
 
 // settingUnifiedExcluded 存不并入统一视图的账号 id 列表 (JSON 数组)。
 const settingUnifiedExcluded = "unifiedExcludedAccounts"

@@ -3,7 +3,7 @@
 import { t } from "@/lib/i18n";
 import { useI18n } from "@/components/locale-provider";
 
-import { useState, type DragEvent, type KeyboardEvent } from "react";
+import { useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 import { toast } from "sonner";
 import { GripVertical, Server } from "lucide-react";
 
@@ -274,6 +274,13 @@ function reorder(list: Account[], item: OrderItem, to: OrderItem, after: boolean
   return rest;
 }
 
+/** 两份列表的账号一样 (不论先后): 账号增减后本地排的顺序作废。 */
+function sameAccounts(a: Account[], b: Account[]) {
+  if (a.length !== b.length) return false;
+  const ids = new Set(a.map((x) => x.id));
+  return b.every((x) => ids.has(x.id));
+}
+
 /** 后端要的键: 每个登录 "signin:" + 前缀, 后面跟它的邮箱 id。 */
 function orderKeys(list: Account[]): string[] {
   return groupBySignIn(list).flatMap((g) => [signInLookKey(g.signIn), ...g.list.map((a) => a.id)]);
@@ -287,18 +294,39 @@ function useAccountOrder(accounts: Account[]) {
   const [local, setLocal] = useState<{ base: Account[]; list: Account[] } | null>(null);
   const [dragging, setDragging] = useState<OrderItem | null>(null);
   const [over, setOver] = useState<{ item: OrderItem; after: boolean } | null>(null);
-  const list = local && local.base === accounts ? local.list : accounts;
+  // 保存排队: 同时只发一次, 连按方向键时只把最后的顺序补发出去。绑定调用是并发执行的,
+  // 一起发出去时旧顺序可能最后落库; 中途收到 accounts-changed 重读的列表也不盖掉还没存完的顺序。
+  const [saving, setSaving] = useState(false);
+  const queue = useRef<{ running: boolean; next: string[] | null }>({ running: false, next: null });
+  const list = local && (local.base === accounts || saving) && sameAccounts(local.list, accounts) ? local.list : accounts;
 
-  async function move(item: OrderItem, to: OrderItem, after: boolean) {
+  async function flush() {
+    const q = queue.current;
+    if (q.running) return;
+    q.running = true;
+    setSaving(true);
+    try {
+      while (q.next) {
+        const keys = q.next;
+        q.next = null;
+        await api.setAccountOrder(keys);
+      }
+    } catch (err) {
+      q.next = null;
+      setLocal(null);
+      toast.error(errorMessage(err));
+    } finally {
+      q.running = false;
+      setSaving(false);
+    }
+  }
+
+  function move(item: OrderItem, to: OrderItem, after: boolean) {
     const next = reorder(list, item, to, after);
     if (next.every((a, i) => a.id === list[i]?.id)) return;
     setLocal({ base: accounts, list: next });
-    try {
-      await api.setAccountOrder(orderKeys(next));
-    } catch (err) {
-      setLocal(null);
-      toast.error(errorMessage(err));
-    }
+    queue.current.next = orderKeys(next);
+    void flush();
   }
 
   /** 方向键: 与同类的上一项 / 下一项换位。 */
@@ -308,7 +336,7 @@ function useAccountOrder(accounts: Account[]) {
       : groupBySignIn(list).map((g) => ({ signIn: g.signIn }));
     const i = peers.findIndex((p) => (item.id ? p.id === item.id : p.signIn === item.signIn));
     const to = peers[i + delta];
-    if (to) void move(item, to, delta > 0);
+    if (to) move(item, to, delta > 0);
   }
 
   const same = (a: OrderItem | null | undefined, b: OrderItem) => !!a && a.signIn === b.signIn && a.id === b.id;
@@ -361,7 +389,7 @@ function useAccountOrder(accounts: Account[]) {
         const after = over && same(over.item, item) ? over.after : false;
         setDragging(null);
         setOver(null);
-        void move(dragging, item, after);
+        move(dragging, item, after);
       },
     }),
   };

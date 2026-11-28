@@ -46,6 +46,7 @@ import { MailSyncState } from "@/components/mail-sync-state";
 import { UpstreamState } from "@/components/upstream-status";
 import { upstreamOK } from "@/lib/upstream";
 import { accountColor, useAccountLooks } from "@/lib/account-looks";
+import { defaultComposeAccount } from "@/lib/account-features";
 import {
   MessageMarksContext,
   nextTaskFlag,
@@ -168,6 +169,17 @@ export function MailShell({ active, onSignedOut }: { active: boolean; onSignedOu
   const [username, setUsername] = useState("");
   const [accounts, setAccounts] = useState<Account[]>([]);
   const accountLooks = useAccountLooks();
+  // 设置 → 写信里选的「全部账号」默认写信账号 (空为主登录)。
+  const [composeDefault, setComposeDefault] = useState("");
+  useEffect(() => {
+    const load = () =>
+      api
+        .getSettings()
+        .then((s) => setComposeDefault(s?.defaultComposeAccount ?? ""))
+        .catch(() => {});
+    load();
+    return onEvent(Events.settingsChanged, load);
+  }, []);
   const marks = useMessageMarksState();
   const favoriteFolders = useFavoriteFolders();
   const [mailboxesByAccount, setMailboxesByAccount] = useState<Record<string, Mailbox[]>>({});
@@ -276,7 +288,7 @@ export function MailShell({ active, onSignedOut }: { active: boolean; onSignedOu
   const selected = parseEmailKey(selectedKey);
   // 新写的信从哪个账号发: 在看某个账号的文件夹时用它, 统一视图里用个人账号。
   const flatList = !searching && ["drafts", "scheduled"].includes(currentKind);
-  const composeAccount = unified ? (accounts.find((a) => a.isPersonal)?.id ?? accountId) : accountId;
+  const composeAccount = unified ? defaultComposeAccount(accounts, composeDefault) || accountId : accountId;
 
   /**
    * 列表里某个账号的邮件所在的文件夹: 文件夹视图是当前文件夹, 统一视图是该账号同类别的文件夹,
