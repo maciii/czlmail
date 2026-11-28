@@ -21,7 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { api, errorMessage, type Account, type Identity, type Mailbox, type ScheduledItem, type SigningCertificate, type Vacation } from "@/lib/api";
 import { withFeature } from "@/lib/account-features";
-import { htmlToText, isHtmlEmpty, sanitizeInline, textToHtml } from "@/lib/html";
+import { editorHtmlToEmail, emailHtmlToEditor, htmlToText, isHtmlEmpty, sanitizeInline, textToEditorHtml } from "@/lib/html";
 import { isNative } from "@/lib/native-bridge";
 import { main } from "@/wailsjs/go/models";
 
@@ -368,16 +368,19 @@ function SignatureDialog({
   onSaved: () => void;
 }) {
   useI18n();
-  const initial = identity.htmlSignature?.trim() ? identity.htmlSignature : identity.textSignature ? textToHtml(identity.textSignature) : "";
+  const initial = identity.htmlSignature?.trim() ? identity.htmlSignature : identity.textSignature ? textToEditorHtml(identity.textSignature) : "";
   // 带内联样式的签名(常见于从其它客户端复制的 HTML 签名)用可视化编辑会丢样式, 默认进源码模式。
-  const [mode, setMode] = useState<"visual" | "source">(/style=|<table/i.test(initial) ? "source" : "visual");
+  // 可视化编辑保存时给段落写的 margin:0 (editorHtmlToEmail) 不算。
+  const ownStyle = initial.replace(/ style="margin: 0px;"/g, "");
+  const [mode, setMode] = useState<"visual" | "source">(/style=|<table/i.test(ownStyle) ? "source" : "visual");
   const [html, setHtml] = useState(initial);
   const [busy, setBusy] = useState(false);
 
   async function save() {
     setBusy(true);
     try {
-      const clean = isHtmlEmpty(html) ? "" : sanitizeInline(html);
+      // 可视化编辑的签名与正文一样: 段落不留间距、空段落占一行, 发出去照此写成内联样式, 收件人看到的与编辑器一致。
+      const clean = isHtmlEmpty(html) ? "" : sanitizeInline(mode === "visual" ? editorHtmlToEmail(html) : html);
       await api.updateSignatureHTML(accountId, identity.id, clean, htmlToText(clean));
       toast.success(t("签名已保存"));
       onSaved();
@@ -415,7 +418,7 @@ function SignatureDialog({
         </div>
         {mode === "visual" ? (
           <div className="border-border h-72 overflow-hidden rounded-md border">
-            <RichEditor key="visual" content={html} placeholder={t("签名内容")} onChange={setHtml} className="h-full" />
+            <RichEditor key="visual" content={emailHtmlToEditor(html)} placeholder={t("签名内容")} onChange={setHtml} className="h-full" />
           </div>
         ) : (
           <div className="grid gap-2">

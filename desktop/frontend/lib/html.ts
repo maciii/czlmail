@@ -16,10 +16,13 @@ export function textToHtml(text: string): string {
  * mailto 正文都走这里, 插入后看到的空行和预览里一样, 发出去也一样。
  */
 export function textToEditorHtml(text: string): string {
-  const paras = text.replace(/\r\n/g, "\n").split(/\n{2,}/);
+  // 段落之间空了几行就留几个空段落, 连续的空行不合并。
+  const parts = text.replace(/\r\n/g, "\n").split(/(\n{2,})/);
   // 行首空格(缩进)换成 &nbsp;, 否则编辑器会把它们合并掉。
   const line = (l: string) => escapeHtml(l).replace(/^ +/, (sp) => "&nbsp;".repeat(sp.length));
-  return paras.map((p) => `<p>${p.split("\n").map(line).join("<br>")}</p>`).join("<p></p>");
+  return parts
+    .map((p, i) => (i % 2 ? "<p></p>".repeat(p.length - 1) : `<p>${p.split("\n").map(line).join("<br>")}</p>`))
+    .join("");
 }
 
 /**
