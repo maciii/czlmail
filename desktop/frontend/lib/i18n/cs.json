@@ -1498,7 +1498,7 @@
   "带待办旗标": "Ke zpracování",
   "编辑筛选文件夹": "Upravit filtrovací složku",
   "新建筛选文件夹": "Nová filtrovací složka",
-  "显示在「全部账号」的「未读」下面，列出同时满足下列条件的邮件。只查找本机已缓存的邮件。": "Zobrazí se ve Všech účtech pod Nepřečtenými a ukáže zprávy, které splňují všechny podmínky níže. Prohledávají se jen zprávy uložené v tomto zařízení.",
+  "显示在「全部账号」的「未读」下面，列出同时满足下列条件的邮件。按本机缓存的邮件查找；条件里有旗标或标签时，打开时还会向服务器补查较早的邮件。": "Zobrazí se ve Všech účtech pod Nepřečtenými a ukáže zprávy, které splňují všechny podmínky níže. Prohledávají se zprávy uložené v tomto zařízení; s podmínkou na příznak nebo štítek se při otevření dohledají i starší zprávy na serveru.",
   "例如：待处理": "Např. Ke zpracování",
   "只看未读": "Jen nepřečtené",
   "只看有附件的": "Jen s přílohou",

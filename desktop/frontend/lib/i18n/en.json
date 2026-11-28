@@ -1498,7 +1498,7 @@
   "带待办旗标": "Follow up",
   "编辑筛选文件夹": "Edit smart folder",
   "新建筛选文件夹": "New smart folder",
-  "显示在「全部账号」的「未读」下面，列出同时满足下列条件的邮件。只查找本机已缓存的邮件。": "Shown under Unread in All accounts; lists the emails that match all of the conditions below. Only emails stored on this device are searched.",
+  "显示在「全部账号」的「未读」下面，列出同时满足下列条件的邮件。按本机缓存的邮件查找；条件里有旗标或标签时，打开时还会向服务器补查较早的邮件。": "Shown under Unread in All accounts; lists the emails that match all of the conditions below. Emails stored on this device are searched; with a flag or label condition, older emails are also looked up on the server when you open it.",
   "例如：待处理": "e.g. To do",
   "只看未读": "Unread only",
   "只看有附件的": "With attachments only",

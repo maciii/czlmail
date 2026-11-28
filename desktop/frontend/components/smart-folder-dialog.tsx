@@ -87,7 +87,7 @@ function SmartFolderForm({ folder, accounts, onClose, onSaved }: Props & { folde
         <DialogHeader>
           <DialogTitle>{folder.id ? t("编辑筛选文件夹") : t("新建筛选文件夹")}</DialogTitle>
           <DialogDescription>
-            {t("显示在「全部账号」的「未读」下面，列出同时满足下列条件的邮件。只查找本机已缓存的邮件。")}
+            {t("显示在「全部账号」的「未读」下面，列出同时满足下列条件的邮件。按本机缓存的邮件查找；条件里有旗标或标签时，打开时还会向服务器补查较早的邮件。")}
           </DialogDescription>
         </DialogHeader>
 
