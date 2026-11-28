@@ -53,6 +53,12 @@ func TestRebindAttachmentsKeepsUnmatched(t *testing.T) {
 	if out[0].BlobID != "x" || out[1].BlobID != "y" {
 		t.Fatalf("got %+v", out)
 	}
+	// 改了名、顺序也不同 (类型对不上): 不按顺序硬配, 保持原样。
+	typed := []Attachment{{BlobID: "a", Name: "a.pdf", Type: "application/pdf"}, {BlobID: "b", Name: "b.png", Type: "image/png"}}
+	out = rebindAttachments(typed, []Attachment{{BlobID: "x", Name: "=?utf-8?b", Type: "image/png"}, {BlobID: "y", Name: "=?utf-8?a", Type: "application/pdf"}})
+	if out[0].BlobID != "a" || out[1].BlobID != "b" {
+		t.Fatalf("swapped parts must not be paired by order, got %+v", out)
+	}
 }
 
 // 保存续编的草稿: 新草稿建好后读回它的部件, 返回指向新草稿的引用, 再删旧草稿

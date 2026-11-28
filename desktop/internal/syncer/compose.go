@@ -418,7 +418,7 @@ func (s *Syncer) emailAttachments(ctx context.Context, accountID string, id jmap
 
 // rebindAttachments 把发出去的附件引用对应到新草稿里的部件, 返回换了 BlobID 的副本 (顺序与 sent 一致)。
 // 先按 cid + 文件名 + 类型配对, 再按 cid + 文件名; 仍剩下的只在两边个数相同时按顺序配对
-// (服务器改写了文件名时), 否则保持原引用 —— 宁可留着旧 blob, 也不把附件张冠李戴。
+// 且每一对类型相同 (服务器改写了文件名时), 否则保持原引用 —— 宁可留着旧 blob, 也不把附件张冠李戴。
 func rebindAttachments(sent, got []Attachment) []Attachment {
 	out := append([]Attachment(nil), sent...)
 	used := make([]bool, len(got))
@@ -453,6 +453,16 @@ func rebindAttachments(sent, got []Attachment) []Attachment {
 			}
 		}
 		if len(rest) == 0 || len(rest) != len(free) {
+			continue
+		}
+		// 按顺序对上的每一对类型也要相同: 服务器既改了文件名又调换了顺序时宁可不配, 不把附件张冠李戴。
+		sameTypes := true
+		for k, i := range rest {
+			if !strings.EqualFold(sent[i].Type, got[free[k]].Type) {
+				sameTypes = false
+			}
+		}
+		if !sameTypes {
 			continue
 		}
 		for k, i := range rest {
