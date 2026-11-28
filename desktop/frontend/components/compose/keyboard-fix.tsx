@@ -14,26 +14,26 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { convertDirection, convertLayout, mistypedRun, type TextRun } from "@/lib/keyboard-layout";
 
 /**
- * Fix text typed with the wrong keyboard layout in the message body (see lib/keyboard-layout.ts):
- * Ctrl+Shift+K or the toolbar button converts the selection, or without a selection the mistyped
- * words before the cursor; a hint under the editor offers it when a paragraph looks mistyped.
+ * 纠正正文里用错键盘布局打的字 (见 lib/keyboard-layout.ts): Ctrl+Shift+K 或工具条按钮换算选中的文字,
+ * 没有选中时换算光标前打错的那几个词; 正在打的段落像是打错了时, 编辑器下方给出提示。
+ * 设置 → 写信 →「捷克语键盘」为关闭时 (非捷克语界面的默认) 这些都不出现。
  */
 
 export const KEYBOARD_FIX_SHORTCUT = "Ctrl+Shift+K";
 
-/** Ctrl+Shift+K by the physical key, so it works whichever layout is active. */
+/** 按物理键位认 Ctrl+Shift+K, 当前是哪种布局都能用。 */
 export function isKeyboardFixShortcut(e: KeyboardEvent): boolean {
   return (e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.code === "KeyK";
 }
 
-/** Characters of the current paragraph before the cursor; inline leaves (images, line breaks) count as one. */
+/** 当前段落里光标前的文字; 行内叶节点 (图片、换行) 各算一个字符。 */
 function textBeforeCursor(editor: Editor): { start: number; text: string } {
   const { $from } = editor.state.selection;
   const start = $from.start();
   return { start, text: editor.state.doc.textBetween(start, $from.pos, "\n", "\n") };
 }
 
-/** The mistyped words before the cursor, as document positions. */
+/** 光标前打错的词在文档里的位置。 */
 function mistypedRange(editor: Editor, minWords: number): TextRun | null {
   if (!editor.state.selection.empty) return null;
   const { start, text } = textBeforeCursor(editor);
@@ -41,7 +41,7 @@ function mistypedRange(editor: Editor, minWords: number): TextRun | null {
   return run && { from: start + run.from, to: start + run.to };
 }
 
-/** Converts the text between from and to, keeping its formatting; returns whether anything changed. */
+/** 换算 from 到 to 之间的文字, 格式不变; 返回是否有改动。 */
 function convertRange(editor: Editor, from: number, to: number, keepSelection: boolean): boolean {
   const { state } = editor;
   const direction = convertDirection(state.doc.textBetween(from, to, " ", " "));
@@ -53,20 +53,20 @@ function convertRange(editor: Editor, from: number, to: number, keepSelection: b
     if (start < end) parts.push({ from: start, to: end, text: node.text.slice(start - pos, end - pos), marks: node.marks });
   });
   const tr = state.tr;
-  // From the end, so the positions of the earlier parts stay valid.
+  // 从后往前换, 前面各段的位置不受影响。
   for (const part of parts.reverse()) {
     const converted = convertLayout(part.text, direction);
     if (converted === part.text) continue;
     tr.replaceWith(part.from, part.to, state.schema.text(converted, part.marks));
   }
   if (!tr.docChanged) return false;
-  // A selection stays selected, so pressing the shortcut again converts it back.
+  // 选中的文字换完仍选中, 再按一次快捷键就换回去。
   if (keepSelection) tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(from, -1), tr.mapping.map(to, 1)));
   editor.view.dispatch(tr.scrollIntoView());
   return true;
 }
 
-/** Converts the selection, or without one the mistyped words before the cursor. */
+/** 换算选中的文字; 没有选中时换算光标前打错的词。 */
 export function fixKeyboardLayout(editor: Editor): boolean {
   const { from, to, empty } = editor.state.selection;
   if (!empty) return convertRange(editor, from, to, true);
@@ -86,7 +86,7 @@ export function KeyboardFixButton({ editor }: { editor: Editor | null }) {
           disabled={!editor}
           aria-label={t("修正键盘布局")}
           aria-keyshortcuts="Control+Shift+K"
-          // Keep the selection in the editor: the button must not take focus on mouse down.
+          // 按下鼠标时不抢焦点, 编辑器里的选区才留得住。
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => {
             if (editor && fixKeyboardLayout(editor)) editor.commands.focus();
@@ -102,10 +102,10 @@ export function KeyboardFixButton({ editor }: { editor: Editor | null }) {
   );
 }
 
-/** Two mistyped words before the cursor are enough to offer the fix; one could be a name like "mp3". */
+/** 光标前有两个打错的词才提示; 只有一个可能是 "mp3" 这类名字。 */
 const HINT_MIN_WORDS = 2;
 
-/** A hint under the editor when the paragraph being typed looks like it was typed on the wrong layout. */
+/** 正在打的段落像是用错了布局时, 编辑器下方的提示。 */
 export function KeyboardFixHint({ editor }: { editor: Editor | null }) {
   useI18n();
   const [preview, setPreview] = useState<{ before: string; after: string } | null>(null);

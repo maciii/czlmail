@@ -1535,5 +1535,6 @@
   "这段文字像是用错了键盘布局：": "Text vypadá jako napsaný jinou klávesnicí:",
   "本封邮件不再提示": "V této zprávě už neupozorňovat",
   "捷克语键盘": "Česká klávesnice",
-  "修正用错键盘布局输入的文字（Ctrl+Shift+K）时按这个布局换算": "Podle tohoto rozložení se opravuje text napsaný jinou klávesnicí (Ctrl+Shift+K)"
+  "开着英文布局打了捷克语时，用 Ctrl+Shift+K 换成捷克语；选择你用的捷克语布局": "Převede češtinu napsanou na anglické klávesnici zpět na češtinu (Ctrl+Shift+K). Vyberte rozložení, které používáte.",
+  "不使用": "Nepoužívat"
 }

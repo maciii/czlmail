@@ -9,7 +9,7 @@ test("Czech typed on the US layout converts back, dead keys included", () => {
   assert.equal(usToCzech("6lu+tou4k7 k;+n", "qwertz"), "žluťoučký kůň");
   assert.equal(usToCzech("P59li3 6lu+tou4k7 k;+n [p2l +d8belsk0 =odz", "qwertz"), "Příliš žluťoučký kůň úpěl ďábelské ódy");
   assert.equal(usToCzech("Dobr2 den", "qwerty"), "Dobrě den");
-  // A dead key with a space gives the accent (the space is used up); with a letter it cannot take, both stay.
+  // 死键后跟空格打出符号本身 (空格被吃掉); 跟一个合成不了的字母时两个都保留。
   assert.equal(usToCzech("+ a+b", "qwertz"), "ˇaˇb");
 });
 

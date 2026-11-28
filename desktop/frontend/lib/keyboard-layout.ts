@@ -1,18 +1,32 @@
 /**
- * Fix text typed with the wrong keyboard layout: Czech typed while the English (US) layout was active
- * ("6lu+tou4k7 k;+n" → "žluťoučký kůň") and the other way round ("Zes" → "Yes").
+ * 纠正用错键盘布局打的字: 开着英文 (US) 布局打了捷克语 ("6lu+tou4k7 k;+n" → "žluťoučký kůň"), 或反过来 ("Zes" → "Yes")。
  *
- * The tables follow the Windows layouts key by key, including the dead keys of the Czech layout
- * (´ on the "=" key, ˇ on Shift+"=", ¨ on "\"), so a whole word converts back exactly.
- * Czech exists as QWERTZ (the Windows default) and QWERTY; they differ only in Y and Z.
+ * 对照表按 Windows 的布局逐键对应, 含捷克语布局的死键 (「=」键是 ´, Shift+「=」是 ˇ, 「\」是 ¨), 整个词能原样换回来。
+ * 捷克语有 QWERTZ (Windows 默认) 与 QWERTY 两种, 只差 Y 和 Z。
  *
- * The layout is a per-machine preference like the shortcuts: it follows the keyboard, not the account.
+ * 用哪种布局跟着这台机器的键盘走 (同快捷键), 存 localStorage, 不随账号同步。
+ * 只对捷克语用户有用: 没设过时捷克语界面默认开启 (QWERTZ), 其它语言默认关闭——
+ * 「b2b」「k8s」这类词按捷克语布局换算后也像捷克语单词, 不关掉会给不用捷克语的人误报。
  */
 
 export type CzechLayout = "qwertz" | "qwerty";
+/** 设置值: 某种捷克语布局, 或关闭 (编辑器里不出现按钮、快捷键与提示)。 */
+export type CzechLayoutSetting = CzechLayout | "off";
 
 const STORAGE_KEY = "czlmail.czechKeyboard";
 
+/** 这台机器的设置; 没设过时按界面语言: 捷克语界面为 QWERTZ, 其它为关闭。 */
+export function czechLayoutSetting(uiLocale: string): CzechLayoutSetting {
+  try {
+    const v = localStorage.getItem(STORAGE_KEY);
+    if (v === "qwertz" || v === "qwerty" || v === "off") return v;
+  } catch {
+    // 读不到存储时按界面语言。
+  }
+  return uiLocale === "cs" ? "qwertz" : "off";
+}
+
+/** 换算用的布局 (关闭时也给一个, 供直接调用转换函数时用)。 */
 export function czechLayout(): CzechLayout {
   try {
     return localStorage.getItem(STORAGE_KEY) === "qwerty" ? "qwerty" : "qwertz";
@@ -21,11 +35,11 @@ export function czechLayout(): CzechLayout {
   }
 }
 
-export function setCzechLayout(layout: CzechLayout) {
+export function setCzechLayout(layout: CzechLayoutSetting) {
   try {
     localStorage.setItem(STORAGE_KEY, layout);
   } catch {
-    // Without storage the default (QWERTZ) applies.
+    // 存不了时下次仍按界面语言的默认值。
   }
 }
 
@@ -33,7 +47,7 @@ const ACUTE = "´"; // ´
 const CARON = "ˇ"; // ˇ
 const DIAERESIS = "¨"; // ¨
 
-/** US character → the character the same key gives on the Czech layout (without Y/Z, see layoutMap). */
+/** US 布局的字符 → 同一个键在捷克语布局上打出的字符 (不含 Y/Z, 见 layoutMap)。 */
 const US_TO_CS: Record<string, string> = {
   "`": ";", "~": "°",
   "1": "+", "!": "1",
@@ -71,7 +85,7 @@ function layoutMap(layout: CzechLayout): Record<string, string> {
   return { ...US_TO_CS, y: "z", z: "y", Y: "Z", Z: "Y" };
 }
 
-/** Text typed on the US layout → what the same keys give on the Czech layout. */
+/** 用 US 布局打出的文字 → 同样的按键在捷克语布局上打出的文字。 */
 export function usToCzech(text: string, layout: CzechLayout = czechLayout()): string {
   const map = layoutMap(layout);
   const chars = Array.from(text);
@@ -83,7 +97,7 @@ export function usToCzech(text: string, layout: CzechLayout = czechLayout()): st
       out += c;
       continue;
     }
-    // A dead key combines with the next key; with a space it gives the accent itself, as in Windows.
+    // 死键与下一个键合成一个字母; 后面跟空格时打出符号本身, 与 Windows 相同。
     const next = i + 1 < chars.length ? (map[chars[i + 1]] ?? chars[i + 1]) : undefined;
     if (next === " ") {
       out += c;
@@ -98,12 +112,12 @@ export function usToCzech(text: string, layout: CzechLayout = czechLayout()): st
   return out;
 }
 
-/** Text typed on the Czech layout → what the same keys give on the US layout. */
+/** 用捷克语布局打出的文字 → 同样的按键在 US 布局上打出的文字。 */
 export function czechToUs(text: string, layout: CzechLayout = czechLayout()): string {
   const map = layoutMap(layout);
   const reverse: Record<string, string> = {};
   for (const [us, cs] of Object.entries(map)) reverse[cs] = us;
-  // Letters written with a dead key: the dead key, then the base letter.
+  // 靠死键打出的字母: 先死键, 再基本字母。
   for (const [mark, letters] of Object.entries(DEAD_KEYS)) {
     for (const [base, letter] of Object.entries(letters)) {
       if (!(letter in reverse)) reverse[letter] = reverse[mark] + (reverse[base] ?? base);
@@ -112,25 +126,24 @@ export function czechToUs(text: string, layout: CzechLayout = czechLayout()): st
   return Array.from(text, (c) => reverse[c] ?? c).join("");
 }
 
-/** Characters only the Czech layout types (or composes with its dead keys). */
+/** 只有捷克语布局才打得出 (或靠死键合成) 的字符。 */
 const CZECH_ONLY = /[ěščřžýáíéůúóďťňäëöüľĚŠČŘŽÝÁÍÉŮÚÓĎŤŇÄËÖÜĽ§°´ˇ¨]/;
 
-/** US keys that give Czech letters, so a word typed on the wrong layout contains them. */
+/** 在捷克语布局上打出捷克字母的 US 键: 用错布局打的词里会有它们。 */
 const LETTER_KEYS = /[2-90;[+=]/;
 const LETTER = /\p{L}/u;
 const LETTERS_ONLY = /^\p{L}+$/u;
-/** Punctuation that may end a word in both layouts. */
+/** 两种布局里都可能出现在词尾的标点。 */
 const TRAILING = /[.,!?:"')(\-]+$/;
 
 /**
- * A word that looks like Czech typed on the US layout: it mixes letters with keys that give Czech
- * letters, and converted it is one word of letters ("6lu+tou4k7" → "žluťoučký"). Years ("2026"),
- * "mp3" and the like are left alone because they have no letters, or have too few to count (see mistypedRun).
+ * 像是开着 US 布局打的捷克语词: 字母里夹着能打出捷克字母的键, 换算后是一个全由字母组成的词
+ * ("6lu+tou4k7" → "žluťoučký")。年份 ("2026")、"mp3" 之类没有字母或字母太少, 不算 (见 mistypedRun)。
  */
 export function looksMistyped(word: string, layout: CzechLayout = czechLayout()): boolean {
   if (CZECH_ONLY.test(word) || !LETTER_KEYS.test(word) || !/[a-zA-Z]/.test(word)) return false;
   const converted = usToCzech(word, layout).replace(TRAILING, "");
-  // A dead key left on its own (ˇ is a "modifier letter" in Unicode) means the keys did not form a word.
+  // 剩下单独的死键符号 (ˇ 在 Unicode 里算「修饰字母」) 说明这几个键拼不成词。
   return converted.length > 1 && LETTERS_ONLY.test(converted) && !/[´ˇ¨]/.test(converted) && CZECH_ONLY.test(converted);
 }
 
@@ -140,12 +153,10 @@ export interface TextRun {
 }
 
 /**
- * The run of words before the cursor that was typed on the wrong layout: from the first mistyped word
- * after the last word that has Czech letters (that one was typed on the Czech layout) up to the cursor.
- * Words before the first mistyped one stay as they are: plain words such as "za" type the same on
- * both layouts except for Y and Z, so converting them could only break them.
+ * 光标前用错布局打的那一串词: 从最后一个带捷克字母的词 (它是用捷克语布局打的) 之后的第一个打错的词起, 到光标为止。
+ * 第一个打错的词之前的词保持原样: "za" 这类普通词在两种布局里除 Y、Z 外打法相同, 换算只会把它们改坏。
  *
- * Returns null when fewer than `minWords` words look mistyped.
+ * 看起来打错的词少于 `minWords` 个时返回 null。
  */
 export function mistypedRun(text: string, cursor: number, minWords = 1, layout: CzechLayout = czechLayout()): TextRun | null {
   const words = Array.from(text.slice(0, cursor).matchAll(/\S+/g), (m) => ({ from: m.index, to: m.index + m[0].length, word: m[0] }));
@@ -163,7 +174,7 @@ export function mistypedRun(text: string, cursor: number, minWords = 1, layout: 
   return { from: tail[first].from, to: tail[tail.length - 1].to };
 }
 
-/** Which way to convert a selection: Czech letters in it mean it was typed on the Czech layout. */
+/** 选中文字往哪个方向换: 里面有捷克字母说明是用捷克语布局打的。 */
 export function convertDirection(text: string, layout: CzechLayout = czechLayout()): "toCzech" | "toUs" {
   const words = text.split(/\s+/).filter(Boolean);
   if (words.some((w) => looksMistyped(w, layout))) return "toCzech";

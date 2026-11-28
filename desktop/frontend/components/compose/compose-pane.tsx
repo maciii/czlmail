@@ -1,6 +1,6 @@
 "use client";
 
-import { dateLocale, t } from "@/lib/i18n";
+import { dateLocale, getLocale, t } from "@/lib/i18n";
 import { useI18n } from "@/components/locale-provider";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -25,6 +25,7 @@ import { toast } from "sonner";
 
 import { RichEditor } from "@/components/compose/rich-editor";
 import { fixKeyboardLayout, isKeyboardFixShortcut, KeyboardFixButton, KeyboardFixHint } from "@/components/compose/keyboard-fix";
+import { czechLayoutSetting } from "@/lib/keyboard-layout";
 import { RecipientInput } from "@/components/recipient-input";
 import {
   AlertDialog,
@@ -178,8 +179,10 @@ export function ComposePane({ accountId, draft, onClose, onSent, leaveRef, sourc
   const [intent, setIntent] = useState("");
 
   const editorRef = useRef<Editor | null>(null);
-  // The same editor as state, for the parts that render from it (keyboard layout fix).
+  // 同一个编辑器再存一份 state, 给按它渲染的部分 (键盘布局纠正) 用。
   const [editor, setEditor] = useState<Editor | null>(null);
+  // 键盘布局纠正只对捷克语用户有用, 设置里关着 (非捷克语界面的默认) 时不出现。每次渲染读一次, 设置改了下次渲染生效。
+  const keyboardFix = czechLayoutSetting(getLocale()) !== "off";
   // 打开写信面板时光标落在第一个空着的地方, 不用先点鼠标: 新邮件、转发 → 收件人,
   // 从通讯录写信 → 主题, 回复 → 正文开头 (引用在下面)。
   const initialFocus = !draft.to.trim() ? "to" : !draft.subject.trim() ? "subject" : "body";
@@ -681,7 +684,7 @@ export function ComposePane({ accountId, draft, onClose, onSent, leaveRef, sourc
       }}
       onDrop={() => setDragging(false)}
       onKeyDown={(e) => {
-        if (editor && isKeyboardFixShortcut(e.nativeEvent) && editor.view.dom.contains(e.target as Node)) {
+        if (keyboardFix && editor && isKeyboardFixShortcut(e.nativeEvent) && editor.view.dom.contains(e.target as Node)) {
           e.preventDefault();
           fixKeyboardLayout(editor);
           return;
@@ -817,13 +820,13 @@ export function ComposePane({ accountId, draft, onClose, onSent, leaveRef, sourc
             }}
             toolbarExtra={
               <>
-                <KeyboardFixButton editor={editor} />
+                {keyboardFix && <KeyboardFixButton editor={editor} />}
                 {aiMenu}
               </>
             }
           />
 
-          <KeyboardFixHint editor={editor} />
+          {keyboardFix && <KeyboardFixHint editor={editor} />}
 
           {aiPanel && (
             <div className="border-border bg-secondary mx-4 mb-3 flex flex-col gap-2 rounded-md border p-3">
