@@ -1528,5 +1528,9 @@
   "列出筛选文件夹及其条件与邮件数": "Vypsat filtrovací složky s podmínkami a počty zpráv",
   "列出某个筛选文件夹里的邮件": "Vypsat zprávy ve filtrovací složce",
   "修改筛选文件夹的名称与条件": "Změnit název a podmínky filtrovací složky",
-  "删除筛选文件夹（邮件不受影响）": "Smazat filtrovací složku (zprávy zůstanou beze změny)"
+  "删除筛选文件夹（邮件不受影响）": "Smazat filtrovací složku (zprávy zůstanou beze změny)",
+  "拼写检查语言": "Jazyk kontroly pravopisu",
+  "写邮件时按这种语言检查拼写（一次只能一种），重新启动应用后生效": "Podle tohoto jazyka se při psaní kontroluje pravopis (vždy jen jeden jazyk). Projeví se po restartu aplikace",
+  "重新启动应用后生效": "Projeví se po restartu aplikace",
+  "跟随 Windows 显示语言": "Podle jazyka Windows"
 }

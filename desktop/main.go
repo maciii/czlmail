@@ -106,6 +106,8 @@ func main() {
 	}
 	// 上次关闭时的窗口大小与是否最大化。
 	mainWindow.load(app.log).startOptions(opts)
+	// WebView2 启动时读拼写检查语言, 运行中改不了。见 spellcheck.go。
+	applySpellcheckLanguage(app.log)
 
 	if err := wails.Run(opts); err != nil {
 		log.Fatalf("1 run application: %v", err)

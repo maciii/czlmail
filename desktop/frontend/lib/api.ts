@@ -227,6 +227,9 @@ export const api = {
   removeSigningCertificate: guard(App.RemoveSigningCertificate),
   verifySignature: guard(App.VerifySignature),
   saveSettings: guard(App.SaveSettings),
+  // 拼写检查语言 (Windows 上的 WebView2 只用一种, 下次启动生效)。
+  getSpellcheckSettings: guard(App.GetSpellcheckSettings),
+  setSpellcheckLanguage: guard(App.SetSpellcheckLanguage),
   getAccountLooks: guard(App.GetAccountLooks),
   setAccountLook: guard(App.SetAccountLook),
   setAccountOrder: guard(App.SetAccountOrder),

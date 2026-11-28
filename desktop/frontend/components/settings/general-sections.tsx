@@ -308,6 +308,7 @@ export function ComposeSection({ active }: { active: boolean }) {
             onCheckedChange={(on) => save({ readReceiptDefault: on })}
           />
         </Row>
+        <SpellcheckLanguageRow active={active} />
       </Card>
       <SectionTitle title={t("发送前检查")} small />
       <Card>
@@ -323,6 +324,54 @@ export function ComposeSection({ active }: { active: boolean }) {
           />
         </Row>
       </Card>
+    </>
+  );
+}
+
+/**
+ * Spell-check languages offered in Settings: names in their own language, so they need no translation.
+ * WebView2 on Windows checks one language at a time (see spellcheck.go).
+ */
+const SPELLCHECK_LANGUAGES: readonly (readonly [string, string])[] = [
+  ["cs", "Čeština"],
+  ["de-DE", "Deutsch"],
+  ["en-GB", "English (UK)"],
+  ["en-US", "English (US)"],
+  ["es-ES", "Español"],
+  ["fr-FR", "Français"],
+  ["it-IT", "Italiano"],
+  ["pl", "Polski"],
+  ["sk", "Slovenčina"],
+  ["ru", "Русский"],
+];
+
+/** Spell-check language for the editor; Windows only, applied on the next start. */
+function SpellcheckLanguageRow({ active }: { active: boolean }) {
+  useI18n();
+  const [state, setState] = useState<{ supported: boolean; language: string } | null>(null);
+  useEffect(() => {
+    if (!active) return;
+    api.getSpellcheckSettings().then(setState, () => setState(null));
+  }, [active]);
+  if (!state?.supported) return null;
+  return (
+    <>
+      <Divider />
+      <Row title={t("拼写检查语言")} desc={t("写邮件时按这种语言检查拼写（一次只能一种），重新启动应用后生效")}>
+        <OptionSelect
+          value={state.language}
+          onChange={(language) => {
+            api.setSpellcheckLanguage(language).then(
+              () => {
+                setState({ ...state, language });
+                toast.success(t("重新启动应用后生效"));
+              },
+              (err) => toast.error(errorMessage(err)),
+            );
+          }}
+          options={[["", t("跟随 Windows 显示语言")], ...SPELLCHECK_LANGUAGES]}
+        />
+      </Row>
     </>
   );
 }

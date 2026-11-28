@@ -1528,5 +1528,9 @@
   "列出筛选文件夹及其条件与邮件数": "List smart folders with their conditions and message counts",
   "列出某个筛选文件夹里的邮件": "List the messages in a smart folder",
   "修改筛选文件夹的名称与条件": "Change a smart folder's name and conditions",
-  "删除筛选文件夹（邮件不受影响）": "Delete a smart folder (messages are not affected)"
+  "删除筛选文件夹（邮件不受影响）": "Delete a smart folder (messages are not affected)",
+  "拼写检查语言": "Spell-check language",
+  "写邮件时按这种语言检查拼写（一次只能一种），重新启动应用后生效": "Spelling is checked in this language while you write (one language at a time). Takes effect after restarting the app",
+  "重新启动应用后生效": "Takes effect after restarting the app",
+  "跟随 Windows 显示语言": "Windows display language"
 }
