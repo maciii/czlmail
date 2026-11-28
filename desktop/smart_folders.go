@@ -9,12 +9,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/woodchen-ink/czlmail/desktop/internal/accountid"
 	"github.com/woodchen-ink/czlmail/desktop/internal/store"
+	"github.com/woodchen-ink/czlmail/desktop/internal/syncer"
 )
 
 // 筛选文件夹 (同 Outlook 的搜索文件夹、Apple Mail 的智能邮箱): 用户自己组合条件 —— 未读、待办旗标、标签、
@@ -84,8 +87,10 @@ type smartFolderValue struct {
 	// Accounts 是账号的同步键。
 	Accounts []string `json:"accounts,omitempty"`
 	Scope    string   `json:"scope,omitempty"`
-	// Created 是新建的时间 (Unix 毫秒), 侧栏按它排先后; 改条件不变。
+	// Created 是新建的时间 (Unix 毫秒); 改条件不变。
 	Created int64 `json:"created,omitempty"`
+	// Position 是设置里排的先后 (从 1 起); 0 是没排过, 排在排过的后面、按新建时间。
+	Position int `json:"position,omitempty"`
 }
 
 // normalizeSmartFolder 去掉首尾空白、限制长度, 不认识的取值丢掉, 标签去重排序。
@@ -93,6 +98,9 @@ func normalizeSmartFolder(v smartFolderValue) smartFolderValue {
 	v.Name = strings.Join(strings.Fields(v.Name), " ")
 	if r := []rune(v.Name); len(r) > 64 {
 		v.Name = string(r[:64])
+	}
+	if v.Position < 0 {
+		v.Position = 0
 	}
 	if v.Flag != "flagged" && v.Flag != "completed" {
 		v.Flag = ""
@@ -196,6 +204,14 @@ func (a *App) GetSmartFolders() ([]SmartFolder, error) {
 	return smartFolderList(rows, a.lookSignIns()), nil
 }
 
+// positionRank 让没排过的 (0) 排在排过的后面。
+func positionRank(p int) int {
+	if p <= 0 {
+		return math.MaxInt
+	}
+	return p
+}
+
 func smartFolderList(rows map[string]store.TimedSetting, signIns []lookSignIn) []SmartFolder {
 	type entry struct {
 		id string
@@ -208,7 +224,8 @@ func smartFolderList(rows map[string]store.TimedSetting, signIns []lookSignIn) [
 		}
 	}
 	slices.SortFunc(list, func(x, y entry) int {
-		return cmp.Or(cmp.Compare(x.v.Created, y.v.Created), strings.Compare(x.id, y.id))
+		return cmp.Or(cmp.Compare(positionRank(x.v.Position), positionRank(y.v.Position)),
+			cmp.Compare(x.v.Created, y.v.Created), strings.Compare(x.id, y.id))
 	})
 	out := make([]SmartFolder, len(list))
 	for i, e := range list {
@@ -245,6 +262,7 @@ func (a *App) SaveSmartFolder(f SmartFolder) (SmartFolder, error) {
 			old.Created = time.Now().UnixMilli()
 		}
 		v.Created = old.Created
+		v.Position = old.Position
 		// 本机没有的登录的账号原样留着。
 		for _, key := range old.Accounts {
 			if len(localSmartAccounts([]string{key}, signIns)) == 0 {
@@ -267,6 +285,42 @@ func (a *App) SaveSmartFolder(f SmartFolder) (SmartFolder, error) {
 		return SmartFolder{}, err
 	}
 	return v.local(id, signIns), nil
+}
+
+// SetSmartFolderOrder 按 ids 的先后重排筛选文件夹 (设置里拖动); 不在 ids 里的排在后面, 按新建时间。
+// 每条定义各记自己的位置, 与名字、条件一起逐条同步。
+func (a *App) SetSmartFolderOrder(ids []string) error {
+	st, err := a.currentStore()
+	if err != nil {
+		return err
+	}
+	pos := map[string]int{}
+	for _, id := range ids {
+		if _, ok := pos[id]; !ok {
+			pos[id] = len(pos) + 1
+		}
+	}
+	rows, err := st.TimedSettingsWithPrefix(a.ctx, smartFolderPrefix)
+	if err != nil {
+		return err
+	}
+	changed := false
+	for id, row := range rows {
+		v := decodeSmartFolder(row.Value)
+		if v.Name == "" || v.Position == pos[id] {
+			continue
+		}
+		v.Position = pos[id]
+		if err := st.SetStringSetting(a.ctx, smartFolderPrefix+id, encodeSmartFolder(v)); err != nil {
+			return err
+		}
+		changed = true
+	}
+	if changed {
+		a.emit(EventSettingsChanged)
+		a.syncSmartFoldersSoon()
+	}
+	return nil
 }
 
 // newSmartFolderID 是新筛选文件夹的 id: 随机的 16 位十六进制, 两台设备各自新建的不会撞上。
@@ -382,6 +436,85 @@ func (a *App) listSmartFolder(st *store.Store, id, only string, limit, offset in
 	}
 	boxes, filter := smartFolderQuery(snap, f, only)
 	return st.FilteredEmails(a.ctx, boxes, filter, limit, offset)
+}
+
+const (
+	// smartServerLimit 是向服务器补查时每个账号、每个关键字最多取的邮件数 (同待办里的旗标邮件)。
+	smartServerLimit   = 500
+	smartServerTimeout = 10 * time.Second
+)
+
+// smartServerKeywords 是向服务器补查用的关键字: 旗标条件只查旗标 (同时有标签时取到的是超集, 本地再筛),
+// 否则每个标签各查一次。没有旗标也没有标签时不补查: 别的条件 (未读、发件人) 服务器查出来的范围太大。
+func smartServerKeywords(f SmartFolder) []string {
+	switch f.Flag {
+	case "flagged":
+		return []string{"$flagged"}
+	case "completed":
+		return []string{"$completed"}
+	}
+	return f.Tags
+}
+
+// RefreshSmartFolder 让各账号的服务器补齐筛选文件夹里本地缓存缺的邮件: 缓存只有最近 500 封与翻过的页,
+// 旧的旗标、标签邮件只靠本地会漏掉 (同待办模块的 RefreshTodoEmails)。只在条件里有旗标或标签时查;
+// 补进了邮件的账号发 mail:changed, 列表与计数跟着更新。某个账号失败只记日志。
+func (a *App) RefreshSmartFolder(id string) error {
+	st, err := a.currentStore()
+	if err != nil {
+		return err
+	}
+	f, err := a.smartFolderByID(st, id)
+	if err != nil {
+		return err
+	}
+	keywords := smartServerKeywords(f)
+	if len(keywords) == 0 {
+		return nil
+	}
+	snap, err := a.loadSmartMailboxes(st)
+	if err != nil {
+		return err
+	}
+	boxes, _ := smartFolderQuery(snap, f, "")
+	// 账号 → 只在收件箱里找时的收件箱 (其它范围不限文件夹, 本地再按范围筛)。
+	accounts := map[string]string{}
+	for _, b := range boxes {
+		if _, ok := accounts[b.AccountID]; !ok {
+			inbox := ""
+			if f.Scope == smartScopeInbox {
+				inbox = b.MailboxID
+			}
+			accounts[b.AccountID] = inbox
+		}
+	}
+	var wg sync.WaitGroup
+	for acc, inbox := range accounts {
+		s, err := a.syncerFor(acc)
+		if err != nil {
+			continue
+		}
+		wg.Go(func() {
+			ctx, cancel := context.WithTimeout(a.ctx, smartServerTimeout)
+			defer cancel()
+			added := 0
+			for _, kw := range keywords {
+				n, err := s.FillFromServer(ctx, acc, syncer.EmailFilter{
+					Keyword: kw, Unread: f.Unread, HasAttachment: f.Attachment, From: f.From, MailboxID: inbox,
+				}, smartServerLimit)
+				if err != nil {
+					a.log.Debug("refresh smart folder", "account", acc, "err", err)
+					break
+				}
+				added += n
+			}
+			if added > 0 {
+				a.emit(EventMailChanged, acc)
+			}
+		})
+	}
+	wg.Wait()
+	return nil
 }
 
 // SmartFolderCounts 数出每个筛选文件夹里的邮件数与未读数, 键是 id。

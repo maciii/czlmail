@@ -5,9 +5,10 @@ import { useI18n } from "@/components/locale-provider";
 
 import { useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 import { toast } from "sonner";
-import { GripVertical, Server } from "lucide-react";
+import { Server } from "lucide-react";
 
 import { Card, SectionTitle } from "@/components/settings/ui";
+import { DragHandle, DropLine } from "@/components/settings/reorder";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -396,40 +397,3 @@ function useAccountOrder(accounts: Account[]) {
 }
 
 const ACCOUNT_DRAG_TYPE = "application/x-czlmail-account";
-
-/** 拖动的手柄; 不能动 (同类只有它一个) 时只占位, 名字照样对齐。 */
-function DragHandle({
-  enabled,
-  className,
-  ...events
-}: {
-  enabled: boolean;
-  className?: string;
-  onDragStart: (e: DragEvent) => void;
-  onDragEnd: () => void;
-  onKeyDown: (e: KeyboardEvent) => void;
-}) {
-  useI18n();
-  if (!enabled) return <span aria-hidden className={cn("w-5 shrink-0", className)} />;
-  return (
-    <button
-      type="button"
-      draggable
-      aria-label={t("拖动或按 ↑↓ 调整顺序")}
-      title={t("拖动或按 ↑↓ 调整顺序")}
-      className={cn(
-        "text-muted-foreground/60 hover:text-foreground hover:bg-secondary flex h-6 w-5 shrink-0 cursor-grab items-center justify-center rounded-sm active:cursor-grabbing",
-        className,
-      )}
-      {...events}
-    >
-      <GripVertical className="size-3.5" />
-    </button>
-  );
-}
-
-/** 放下位置的细线。 */
-function DropLine({ at }: { at: "top" | "bottom" | null }) {
-  if (!at) return null;
-  return <span aria-hidden className={cn("bg-primary pointer-events-none absolute inset-x-2 z-10 h-0.5 rounded-full", at === "top" ? "-top-px" : "-bottom-px")} />;
-}

@@ -208,3 +208,59 @@ func TestSmartFolders(t *testing.T) {
 		t.Error("ids with a slash are rejected")
 	}
 }
+
+func TestSetSmartFolderOrder(t *testing.T) {
+	a, _ := newSmartFolderTestApp(t)
+	var ids []string
+	for _, name := range []string{"A", "B", "C"} {
+		f, err := a.SaveSmartFolder(SmartFolder{Name: name, Unread: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, f.ID)
+		time.Sleep(2 * time.Millisecond) // 新建时间按毫秒记
+	}
+	names := func() string {
+		t.Helper()
+		list, err := a.GetSmartFolders()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, f := range list {
+			out = append(out, f.Name)
+		}
+		return strings.Join(out, " ")
+	}
+	// 没排过: 按新建时间。
+	if got := names(); got != "A B C" {
+		t.Errorf("default order = %q", got)
+	}
+	// 只排了 C、A: B 没排过, 接在后面。
+	if err := a.SetSmartFolderOrder([]string{ids[2], ids[0]}); err != nil {
+		t.Fatal(err)
+	}
+	if got := names(); got != "C A B" {
+		t.Errorf("custom order = %q", got)
+	}
+	// 改条件不改位置。
+	list, _ := a.GetSmartFolders()
+	edited := list[0]
+	edited.Attachment = true
+	if _, err := a.SaveSmartFolder(edited); err != nil {
+		t.Fatal(err)
+	}
+	if got := names(); got != "C A B" {
+		t.Errorf("order after edit = %q", got)
+	}
+}
+
+// update_smart_folder 只改给了的条件。
+func TestSmartFolderFieldsApply(t *testing.T) {
+	f := SmartFolder{Name: "Follow up", Flag: "flagged", Tags: []string{"work"}, Accounts: []string{"c"}, Scope: smartScopeInbox}
+	unread := true
+	smartFolderFields{Unread: &unread, Tags: []string{}}.apply(&f)
+	if !f.Unread || f.Name != "Follow up" || f.Flag != "flagged" || len(f.Tags) != 0 || len(f.Accounts) != 1 || f.Scope != smartScopeInbox {
+		t.Errorf("apply = %+v", f)
+	}
+}

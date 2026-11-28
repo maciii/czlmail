@@ -1524,5 +1524,9 @@
   "编辑筛选文件夹…": "Upravit filtrovací složku…",
   "删除筛选文件夹": "Smazat filtrovací složku",
   "筛选文件夹的名称不能为空。": "Filtrovací složka musí mít název.",
-  "这个筛选文件夹已经不存在，可能刚在别的设备上被删除。": "Tato filtrovací složka už neexistuje, možná byla právě smazána na jiném zařízení."
+  "这个筛选文件夹已经不存在，可能刚在别的设备上被删除。": "Tato filtrovací složka už neexistuje, možná byla právě smazána na jiném zařízení.",
+  "列出筛选文件夹及其条件与邮件数": "Vypsat filtrovací složky s podmínkami a počty zpráv",
+  "列出某个筛选文件夹里的邮件": "Vypsat zprávy ve filtrovací složce",
+  "修改筛选文件夹的名称与条件": "Změnit název a podmínky filtrovací složky",
+  "删除筛选文件夹（邮件不受影响）": "Smazat filtrovací složku (zprávy zůstanou beze změny)"
 }

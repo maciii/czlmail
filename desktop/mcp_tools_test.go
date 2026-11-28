@@ -37,6 +37,7 @@ func TestMCPToolList(t *testing.T) {
 	want := []string{
 		"list_accounts", "list_mailboxes", "list_emails", "search_emails", "read_email", "get_thread", "read_attachment", "save_attachment", "list_identities",
 		"mark_read", "flag_emails", "set_label", "move_emails", "create_draft", "send_email",
+		"list_smart_folders", "list_smart_folder_emails", "create_smart_folder", "update_smart_folder", "delete_smart_folder",
 		"list_calendars", "list_events", "get_event", "create_event", "update_event", "delete_event", "respond_event",
 		"list_tasks", "create_task", "complete_task", "update_task", "delete_task",
 		"search_contacts", "get_contact", "contact_history", "list_files", "read_file",

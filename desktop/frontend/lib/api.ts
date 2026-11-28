@@ -236,6 +236,8 @@ export const api = {
   saveSmartFolder: guard(App.SaveSmartFolder),
   deleteSmartFolder: guard(App.DeleteSmartFolder),
   smartFolderCounts: guard(App.SmartFolderCounts),
+  refreshSmartFolder: guard(App.RefreshSmartFolder),
+  setSmartFolderOrder: guard(App.SetSmartFolderOrder),
   getVersion: guard(App.GetVersion),
 
   listCalendars: guard(App.ListCalendars),

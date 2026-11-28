@@ -63,6 +63,11 @@ const getToolGroups: () => ({ title: string; tools: { name: string; desc: string
       { name: "flag_emails", desc: t("加星标 / 取消星标"), level: "write" },
       { name: "set_label", desc: t("添加 / 去掉标签"), level: "write" },
       { name: "move_emails", desc: t("归档、移到回收站、标为垃圾邮件或移到文件夹"), level: "modify" },
+      { name: "list_smart_folders", desc: t("列出筛选文件夹及其条件与邮件数"), level: "read" },
+      { name: "list_smart_folder_emails", desc: t("列出某个筛选文件夹里的邮件"), level: "read" },
+      { name: "create_smart_folder", desc: t("新建筛选文件夹"), level: "write" },
+      { name: "update_smart_folder", desc: t("修改筛选文件夹的名称与条件"), level: "write" },
+      { name: "delete_smart_folder", desc: t("删除筛选文件夹（邮件不受影响）"), level: "write" },
     ],
   },
   {

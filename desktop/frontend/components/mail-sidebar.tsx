@@ -634,8 +634,8 @@ export function MailSidebar({
         </Section>
       )}
 
-      {/* 只有一个账号时没有「全部账号」, 筛选文件夹单独一节。 */}
-      {!hasUnified && smartRows.length > 0 && (
+      {/* 只有一个账号时没有「全部账号」, 筛选文件夹单独一节; 还没有筛选文件夹时也留着标题, 「+」在这里新建。 */}
+      {!hasUnified && accounts.length > 0 && (
         <Section
           title={t("筛选文件夹")}
           open={!isCollapsed("smart")}

@@ -295,6 +295,12 @@ export function MailShell({ active, onSignedOut }: { active: boolean; onSignedOu
     ? splitViewAccount(unified).account || defaultComposeAccount(accounts, composeDefault) || accountId
     : accountId;
 
+  // 打开筛选文件夹时让服务器补齐本地缓存没有的旗标 / 标签邮件 (后端只在有这类条件时查); 补进来的经 mail:changed 重载。
+  const openSmart = smartIdOf(unified);
+  useEffect(() => {
+    if (openSmart) api.refreshSmartFolder(openSmart).catch(() => {});
+  }, [openSmart]);
+
   // 打开着的筛选文件夹被删掉了 (这里或别的设备上): 退回「未读」。
   useEffect(() => {
     const id = smartIdOf(unified);
