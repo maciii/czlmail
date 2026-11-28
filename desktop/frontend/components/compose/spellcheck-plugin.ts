@@ -7,23 +7,24 @@ import { api } from "@/lib/api";
 
 
 /**
- * Our own spell checking in the message body (lib/spellcheck.ts): underlines what none of the chosen
- * languages accepts, and opens a menu with corrections on right click.
+ * 邮件正文里自己做的拼写检查 (lib/spellcheck.ts): 给所选语言都不认的词画下划线, 右键弹出改法菜单。
  */
 
 /**
- * The language of a piece of text, written to the mail as <span lang="en-US">. Spell checking uses it
- * instead of all the chosen languages, and recipients' screen readers and spell checkers can too.
+ * 一段文字的语言, 写进邮件时是 <span lang="en-US">。拼写检查对它只用这一种语言, 不用所选的全部语言;
+ * 收件人的读屏软件和拼写检查也可以用。
  */
 export const SpellLanguage = Mark.create({
   name: "spellLang",
-  // Typing at the end of marked text continues in its language, like Word and Outlook.
+  // 在已标记文字的末尾继续输入, 沿用它的语言 (同 Word 与 Outlook)。
   inclusive: true,
   addAttributes() {
     return { lang: { default: null, parseHTML: (el) => el.getAttribute("lang"), renderHTML: (attrs) => (attrs.lang ? { lang: attrs.lang } : {}) } };
   },
   parseHTML() {
-    return [{ tag: "span[lang]" }];
+    // 只认按 BCP 47 规范大小写写的语言 (cs、cs-CZ、sr-Latn-RS, 不检查拼写的 zxx), 也就是这里自己写出去的。
+    // Word / Outlook 粘贴来的 HTML 满是 lang="EN-US"、"X-NONE" 之类, 当成语言标记的话那段文字只按那一种语言检查。
+    return [{ tag: "span[lang]", getAttrs: (el) => (/^[a-z]{2,3}(-[A-Z][a-z]{3})?(-[A-Z]{2})?$/.test(el.getAttribute("lang") ?? "") ? null : false) }];
   },
   renderHTML({ HTMLAttributes }) {
     return ["span", HTMLAttributes, 0];
@@ -36,7 +37,7 @@ export interface SpellMenuRequest {
   from: number;
   to: number;
   word: string;
-  /** The languages the word was checked in; empty = the chosen ones. */
+  /** 这个词检查时用的语言; 为空 = 所选的语言。 */
   langs: string[];
   replacement?: string;
 }
@@ -58,20 +59,19 @@ const SKIP_MARKS = new Set(["code", "link"]);
 const HAS_LETTER = /\p{L}/u;
 const CACHE_LIMIT = 2000;
 
-/** Results per text and language, shared by all open editors; cleared when the dictionary changes. */
+/** 按文字与语言缓存的检查结果, 所有打开的编辑器共用; 词典变化时清空。 */
 const cache = new Map<string, { start: number; length: number; replacement?: string }[]>();
-/** The checks of the open editors, to run again after the dictionary changed. */
+/** 各打开编辑器的检查函数, 词典变化后重新跑。 */
 const rechecks = new Set<() => void>();
 
-/** Checks all open editors again, e.g. after a word was added to the dictionary or languages changed. */
+/** 重新检查所有打开的编辑器, 如词加进词典或语言改了之后。 */
 export function recheckSpelling() {
   cache.clear();
   for (const run of rechecks) run();
 }
 
 /**
- * Text runs of one language per paragraph, with their document positions. Code, links and inline
- * nodes become spaces, so positions stay aligned and they are never underlined.
+ * 每个段落里按语言切开的文字段, 带文档位置。代码、链接与行内节点换成空格, 位置不错位, 也不会被画下划线。
  */
 function segments(doc: PMNode): Segment[] {
   const out: Segment[] = [];
@@ -95,7 +95,7 @@ function segments(doc: PMNode): Segment[] {
   return out.filter((s) => HAS_LETTER.test(s.text));
 }
 
-/** Errors that touch the cursor belong to the word being typed: wait until the cursor leaves it. */
+/** 碰到光标的错误属于正在输入的词: 等光标离开它再标。 */
 function atCursor(view: EditorView, from: number, to: number) {
   const sel = view.state.selection;
   return sel.empty && view.hasFocus() && sel.from >= from && sel.from <= to;
@@ -112,7 +112,7 @@ export function spellcheckPlugin(onMenu: (req: SpellMenuRequest) => void): Plugi
     },
     props: {
       decorations: (state) => key.getState(state),
-      // WebView2's own checking would underline the same words in one language only.
+      // WebView2 自带的检查会按单一语言给同样的词画下划线。
       attributes: { spellcheck: "false" },
       handleDOMEvents: {
         contextmenu: (view, event) => {
@@ -143,7 +143,7 @@ export function spellcheckPlugin(onMenu: (req: SpellMenuRequest) => void): Plugi
             if (cache.size > CACHE_LIMIT) cache.clear();
             pending.forEach((s, i) => cache.set(keyOf(s), results[i] ?? []));
           } catch {
-            return; // No checker (or the call failed): leave the text unmarked.
+            return; // 没有检查器 (或调用失败): 文字不标记。
           }
         }
         if (destroyed) return;
@@ -172,7 +172,7 @@ export function spellcheckPlugin(onMenu: (req: SpellMenuRequest) => void): Plugi
       return {
         update(v, prev) {
           if (!prev.doc.eq(v.state.doc)) return schedule();
-          // Leaving a word that was being typed: check it now.
+          // 离开了正在输入的词: 立即检查它。
           const head = v.state.selection.head;
           if (head !== lastHead) {
             lastHead = head;
@@ -189,7 +189,7 @@ export function spellcheckPlugin(onMenu: (req: SpellMenuRequest) => void): Plugi
   });
 }
 
-/** Turns our checking on for an editor; returns the function that turns it off again. */
+/** 给编辑器启用自己的检查; 返回关闭它的函数。 */
 export function installSpellcheck(editor: Editor, onMenu: (req: SpellMenuRequest) => void): () => void {
   const plugin = spellcheckPlugin(onMenu);
   editor.registerPlugin(plugin);
@@ -198,7 +198,7 @@ export function installSpellcheck(editor: Editor, onMenu: (req: SpellMenuRequest
   };
 }
 
-/** Replaces a misspelled range with a correction. */
+/** 用改法替换拼错的范围。 */
 export function replaceWord(editor: Editor, from: number, to: number, text: string) {
   const { state } = editor;
   const marks = state.doc.nodeAt(from)?.marks ?? [];
@@ -206,7 +206,7 @@ export function replaceWord(editor: Editor, from: number, to: number, text: stri
   editor.commands.focus();
 }
 
-/** Sets the language of a range (null = all chosen languages). */
+/** 设置一段范围的语言 (null = 所选的全部语言)。 */
 export function setRangeLanguage(editor: Editor, from: number, to: number, lang: string | null) {
   const chain = editor.chain().focus().setTextSelection({ from, to });
   (lang ? chain.setMark("spellLang", { lang }) : chain.unsetMark("spellLang")).run();

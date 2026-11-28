@@ -14,8 +14,8 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// The Windows Spell Checking API (spellcheck.h, Windows 8 and later) through plain COM calls.
-// Every call runs on one locked OS thread with COM initialised (see run).
+// Windows 拼写检查 API (spellcheck.h, Windows 8 起) 的纯 COM 调用。
+// 每次调用都在同一个锁定的系统线程上执行, 该线程已初始化 COM (见 run)。
 
 var (
 	ole32                = windows.NewLazySystemDLL("ole32.dll")
@@ -30,7 +30,7 @@ const (
 	sFalse             = 1
 )
 
-// Vtable slots after IUnknown (QueryInterface 0, AddRef 1, Release 2).
+// IUnknown 之后的虚表槽位 (QueryInterface 0, AddRef 1, Release 2)。
 const (
 	factorySupportedLanguages = 3
 	factoryCreateSpellChecker = 5
@@ -75,7 +75,7 @@ func utf16(s string) *uint16 {
 	return p
 }
 
-// takeString copies a string the API allocated and frees it.
+// takeString 复制 API 分配的字符串并释放它。
 func takeString(p *uint16) string {
 	if p == nil {
 		return ""
@@ -85,7 +85,7 @@ func takeString(p *uint16) string {
 	return s
 }
 
-// readEnumString reads and releases an IEnumString.
+// readEnumString 读完并释放一个 IEnumString。
 func readEnumString(enum *comObject, limit int) []string {
 	defer enum.release()
 	var out []string
@@ -112,7 +112,7 @@ var (
 	jobs      = make(chan func(*engine))
 )
 
-// run executes f on the COM thread. The checkers are created there and used only there.
+// run 在 COM 线程上执行 f。检查器在该线程创建, 也只在该线程使用。
 func run(f func(*engine)) {
 	startOnce.Do(func() {
 		ready := make(chan struct{})
@@ -142,7 +142,7 @@ func run(f func(*engine)) {
 	<-done
 }
 
-// checker returns the spell checker for a language, nil when Windows has none for it.
+// checker 返回某种语言的拼写检查器, Windows 没有该语言时为 nil。
 func (e *engine) checker(lang string) *comObject {
 	if c, ok := e.checkers[lang]; ok {
 		return c
@@ -161,7 +161,7 @@ func Supported() bool {
 	return ok
 }
 
-// Languages lists the languages Windows can check, as BCP 47 tags ("cs-CZ", "en-US").
+// Languages 列出 Windows 能检查的语言, 为 BCP 47 标记 ("cs-CZ", "en-US")。
 func Languages() ([]string, error) {
 	var out []string
 	var err error
@@ -204,8 +204,8 @@ func (e *engine) check(c *comObject, text string) ([]Error, error) {
 	return out, nil
 }
 
-// Check returns the ranges of text that none of the languages accepts.
-// Languages Windows cannot check are skipped; with none left nothing is reported.
+// Check 返回文字里没有任何语言认可的范围。
+// Windows 检查不了的语言会跳过; 一种都不剩时什么也不报。
 func Check(text string, langs []string) ([]Error, error) {
 	var out []Error
 	var err error
@@ -231,7 +231,7 @@ func Check(text string, langs []string) ([]Error, error) {
 	return out, err
 }
 
-// Suggest returns corrections for a word from all the languages, best first.
+// Suggest 返回一个词在所有语言里的改法, 最好的在前。
 func Suggest(word string, langs []string, limit int) ([]string, error) {
 	var out []string
 	var err error
@@ -247,7 +247,7 @@ func Suggest(word string, langs []string, limit int) ([]string, error) {
 			}
 			var enum *comObject
 			if hr := c.call(checkerSuggest, uintptr(unsafe.Pointer(utf16(word))), uintptr(unsafe.Pointer(&enum))); failed(hr) || enum == nil {
-				continue // S_FALSE with no list: the word is correct in this language
+				continue // S_FALSE 且没有列表: 这个词在该语言里是对的
 			}
 			perLang = append(perLang, readEnumString(enum, limit))
 		}
@@ -256,14 +256,14 @@ func Suggest(word string, langs []string, limit int) ([]string, error) {
 	return out, err
 }
 
-// Add puts the word into the user's Windows dictionary of each language (shared with other apps).
+// Add 把词加进用户 Windows 里每种语言的词典 (与其他程序共用)。
 func Add(word string, langs []string) error {
 	return eachChecker(langs, func(c *comObject) uintptr {
 		return c.call(checkerAdd, uintptr(unsafe.Pointer(utf16(word))))
 	})
 }
 
-// Ignore accepts the word until the app exits.
+// Ignore 在程序退出前认可这个词。
 func Ignore(word string, langs []string) error {
 	return eachChecker(langs, func(c *comObject) uintptr {
 		return c.call(checkerIgnore, uintptr(unsafe.Pointer(utf16(word))))

@@ -4,7 +4,7 @@ package spell
 
 import "errors"
 
-// Other platforms keep the WebView's own spell checking.
+// 其他平台沿用 WebView 自带的拼写检查。
 
 var errUnsupported = errors.New("spell checking through the system API is only available on Windows")
 

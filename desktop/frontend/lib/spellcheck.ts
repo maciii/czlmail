@@ -4,18 +4,15 @@ import { api, hasRuntime, onEvent } from "@/lib/api";
 import { getLocale } from "@/lib/i18n";
 
 /**
- * Spell checking in several languages through the Windows Spell Checking API (see spellcheck.go and
- * internal/spell). Off until languages are chosen in Settings → Compose; then the editor turns off
- * WebView2's own checking, which knows one language only.
+ * 经 Windows 拼写检查 API 按多种语言检查拼写 (见 spellcheck.go 与 internal/spell)。
+ * 在设置 → 写信里选了语言才启用; 启用后编辑器关掉 WebView2 自带的检查 (它只认一种语言)。
  */
 
 export interface SpellSettings {
   supported: boolean;
-  /** The single language of WebView2's own checking (applies after a restart). */
-  language: string;
-  /** Languages of our own checking; empty means WebView2 checks. */
+  /** 自己检查用的语言; 为空表示由 WebView2 检查。 */
   languages: string[];
-  /** Languages Windows can check. */
+  /** Windows 能检查的语言。 */
   available: string[];
 }
 
@@ -29,14 +26,14 @@ export function spellSettings(refresh = false): Promise<SpellSettings | null> {
   return cached;
 }
 
-/** Calls back with fresh settings whenever they change in Settings. */
+/** 设置里改了之后, 用最新设置回调。 */
 export function onSpellSettingsChange(cb: (s: SpellSettings | null) => void): () => void {
   return onEvent(SPELLCHECK_EVENT, () => {
     spellSettings(true).then(cb);
   });
 }
 
-/** "cs-CZ" → "čeština" in the UI language; falls back to the tag. */
+/** "cs-CZ" → 界面语言下的语言名 (如 "čeština"); 取不到时退回标记本身。 */
 export function languageName(tag: string): string {
   if (tag === NO_CHECK_LANG) return tag;
   try {
@@ -47,10 +44,10 @@ export function languageName(tag: string): string {
   }
 }
 
-/** Short label for a toolbar button: "cs", "en". */
+/** 工具栏按钮的简称: "cs"、"en"。 */
 export function languageShort(tag: string): string {
   return tag.split("-")[0].toUpperCase();
 }
 
-/** BCP 47 "no linguistic content": text marked with it is not checked (names, code, addresses). */
+/** BCP 47 的 "无语言内容": 标成它的文字不检查 (人名、代码、地址)。 */
 export const NO_CHECK_LANG = "zxx";

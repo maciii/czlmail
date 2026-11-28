@@ -26,7 +26,7 @@ import { api, errorMessage } from "@/lib/api";
 import { languageName, languageShort, NO_CHECK_LANG, onSpellSettingsChange, spellSettings, type SpellSettings } from "@/lib/spellcheck";
 import { installSpellcheck, recheckSpelling, replaceWord, setRangeLanguage, type SpellMenuRequest } from "@/components/compose/spellcheck-plugin";
 
-/** Turns our spell checking on for the editor when languages are chosen; follows changes in Settings. */
+/** 选了语言时给编辑器启用自己的拼写检查; 跟随设置里的改动。 */
 export function useSpellcheck(editor: Editor | null) {
   const [settings, setSettings] = useState<SpellSettings | null>(null);
   const [menu, setMenu] = useState<SpellMenuRequest | null>(null);
@@ -53,7 +53,7 @@ export function useSpellcheck(editor: Editor | null) {
   return { settings: active ? settings : null, menu, closeMenu: () => setMenu(null) };
 }
 
-/** The languages offered for marking text: the chosen ones, then "do not check". */
+/** 标记文字时可选的语言: 所选的语言, 再加「不检查」。 */
 function markLanguages(settings: SpellSettings): string[] {
   return [...settings.languages, NO_CHECK_LANG];
 }
@@ -63,8 +63,8 @@ function markLabel(lang: string) {
 }
 
 /**
- * Toolbar button next to AI: the language of the selection (or of what is typed next). "All my
- * languages" accepts a word that is right in any of them; a single language checks only in it.
+ * AI 旁边的工具栏按钮: 选中文字 (或接下来输入的文字) 的语言。「我的所有语言」下一个词在任一语言里正确就认可;
+ * 选单一语言则只按它检查。
  */
 export function SpellLanguageButton({ editor, settings }: { editor: Editor; settings: SpellSettings }) {
   useI18n();
@@ -103,11 +103,11 @@ export function SpellLanguageButton({ editor, settings }: { editor: Editor; sett
   );
 }
 
-/** Right-click menu on an underlined word: corrections, dictionary, language of the word. */
+/** 下划线词上的右键菜单: 改法、词典、这个词的语言。 */
 export function SpellMenu({ editor, request, settings, onClose }: { editor: Editor; request: SpellMenuRequest; settings: SpellSettings; onClose: () => void }) {
   useI18n();
   const [fetched, setFetched] = useState<{ request: SpellMenuRequest; list: string[] } | null>(null);
-  // A known misspelling comes with its one replacement; otherwise ask the dictionaries.
+  // 已知的常见拼错自带唯一改法; 否则向词典要。
   const fixed = request.replacement !== undefined ? [request.replacement] : null;
   const suggestions = fixed ?? (fetched?.request === request ? fetched.list : null);
 

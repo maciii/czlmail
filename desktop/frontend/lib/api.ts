@@ -229,7 +229,6 @@ export const api = {
   saveSettings: guard(App.SaveSettings),
   // 拼写检查语言 (Windows 上的 WebView2 只用一种, 下次启动生效)。
   getSpellcheckSettings: guard(App.GetSpellcheckSettings),
-  setSpellcheckLanguage: guard(App.SetSpellcheckLanguage),
   // 自己检查拼写 (Windows 拼写检查 API, 可多种语言), 见 lib/spellcheck.ts。
   setSpellcheckLanguages: guard(App.SetSpellcheckLanguages),
   checkSpelling: guard(App.CheckSpelling),

@@ -1,11 +1,8 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
-	"io/fs"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -17,20 +14,16 @@ import (
 
 // 拼写检查的语言。
 //
-// Windows 上的 WebView2 只用一种拼写检查语言: 启动时取 WebView2 配置里 intl.accept_languages 的第一个,
-// 默认跟着 Windows 的显示语言。显示语言是英文、写的却是捷克语或德语时, 每个词都会被标成错的。
-// WebView2 没有设置拼写语言的接口, Wails 也不能传浏览器参数 (--lang), 所以在 wails.Run 之前
-// 把选定的语言写进 WebView2 的 Preferences 文件; 运行中改不了, 下次启动生效。
+// Windows 上 WebView2 自带的拼写检查只认一种语言 (跟着 Windows 显示语言), 也没有接口改它。
+// 用户选了语言时, 编辑器关掉 WebView2 的检查, 改由 Windows 拼写检查 API 按所选的几种语言检查 (internal/spell),
+// 一个词在任一语言里正确就不标; 不选时照旧用 WebView2 自带的检查。
+// 不去改 WebView2 的 Preferences (intl.accept_languages): 它同时决定 navigator.languages, 会带偏界面的「跟随系统语言」。
 //
-// 选择存在数据目录的 spellcheck.json 而不是缓存库: 与窗口位置一样是这台机器的事, 程序启动时缓存库还没打开。
+// 选择存在数据目录的 spellcheck.json 而不是缓存库: 与窗口位置一样是这台机器的事。
 
 const spellcheckFile = "spellcheck.json"
 
 type spellcheckState struct {
-	// Language 是用户选的语言 (如 "cs"、"en-US"), 空串表示跟随 Windows。
-	Language string `json:"language,omitempty"`
-	// Applied 是上次写进 WebView2 配置的语言, 改回「跟随 Windows」时据此把它去掉。
-	Applied string `json:"applied,omitempty"`
 	// Languages 是自己检查拼写用的语言 (Windows 拼写检查 API, 见 internal/spell);
 	// 非空时编辑器关掉 WebView2 的检查, 一个词在任一语言里正确就不标。
 	Languages []string `json:"languages,omitempty"`
@@ -39,8 +32,7 @@ type spellcheckState struct {
 // SpellcheckSettings 是设置界面看到的拼写检查语言。
 type SpellcheckSettings struct {
 	// Supported 只在 Windows 上为真; 其他平台的 WebView 用系统自己的拼写检查设置。
-	Supported bool   `json:"supported"`
-	Language  string `json:"language"`
+	Supported bool `json:"supported"`
 	// Languages 是多语言检查选中的语言, Available 是 Windows 能检查的全部语言 (BCP 47)。
 	Languages []string `json:"languages"`
 	Available []string `json:"available"`
@@ -93,7 +85,7 @@ func validSpellcheckLanguage(lang string) bool {
 
 func (a *App) GetSpellcheckSettings() SpellcheckSettings {
 	st := loadSpellcheckState()
-	out := SpellcheckSettings{Supported: runtime.GOOS == "windows", Language: st.Language, Languages: []string{}, Available: []string{}}
+	out := SpellcheckSettings{Supported: runtime.GOOS == "windows", Languages: []string{}, Available: []string{}}
 	if !out.Supported {
 		return out
 	}
@@ -171,111 +163,4 @@ func (a *App) SpellAddWord(word string, langs []string) error {
 // SpellIgnoreWord 在本次运行里不再标这个词。
 func (a *App) SpellIgnoreWord(word string, langs []string) error {
 	return spell.Ignore(word, spellLangs(langs))
-}
-
-// SetSpellcheckLanguage 记下选择, 下次启动时写进 WebView2 的配置。
-func (a *App) SetSpellcheckLanguage(lang string) error {
-	lang = strings.TrimSpace(lang)
-	if !validSpellcheckLanguage(lang) {
-		return errors.New("invalid spellcheck language")
-	}
-	s := loadSpellcheckState()
-	s.Language = lang
-	return saveSpellcheckState(s)
-}
-
-// webviewPreferencesPath 是 WebView2 默认用户数据目录里的 Preferences:
-// Wails 没设 WebviewUserDataPath 时, go-webview2 用 %APPDATA%\<exe 文件名>。
-func webviewPreferencesPath() (string, error) {
-	exe, err := os.Executable()
-	if err != nil {
-		return "", err
-	}
-	appData := os.Getenv("APPDATA")
-	if appData == "" {
-		return "", errors.New("APPDATA not set")
-	}
-	return filepath.Join(appData, filepath.Base(exe), "EBWebView", "Default", "Preferences"), nil
-}
-
-// applySpellcheckLanguage 在 wails.Run 之前调用 (WebView2 运行时会覆盖这个文件)。
-func applySpellcheckLanguage(log *slog.Logger) {
-	if runtime.GOOS != "windows" {
-		return
-	}
-	s := loadSpellcheckState()
-	if s.Language == "" && s.Applied == "" {
-		return // 从没选过: 不碰 WebView2 的配置。
-	}
-	path, err := webviewPreferencesPath()
-	if err != nil {
-		log.Warn("spellcheck preferences path", "err", err)
-		return
-	}
-	if err := setWebviewSpellcheck(path, s.Language); err != nil {
-		log.Warn("apply spellcheck language", "language", s.Language, "err", err)
-		return
-	}
-	if s.Applied != s.Language {
-		s.Applied = s.Language
-		if err := saveSpellcheckState(s); err != nil {
-			log.Warn("save spellcheck state", "err", err)
-		}
-	}
-}
-
-// setWebviewSpellcheck 改写 Preferences 里与拼写语言有关的几项, 其余原样保留。
-// lang 为空时去掉这几项, WebView2 下次启动重新按 Windows 显示语言填。
-func setWebviewSpellcheck(path, lang string) error {
-	prefs := map[string]any{}
-	data, err := os.ReadFile(path)
-	switch {
-	case err == nil:
-		dec := json.NewDecoder(bytes.NewReader(data))
-		dec.UseNumber() // 保留大整数 (时间戳) 原样。
-		if err := dec.Decode(&prefs); err != nil {
-			return err
-		}
-	case errors.Is(err, fs.ErrNotExist):
-		if lang == "" {
-			return nil
-		}
-		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-			return err
-		}
-	default:
-		return err
-	}
-	intl := jsonObject(prefs, "intl")
-	spellcheck := jsonObject(prefs, "spellcheck")
-	if lang == "" {
-		delete(intl, "accept_languages")
-		delete(intl, "selected_languages")
-		delete(spellcheck, "dictionaries")
-	} else {
-		// WebView2 只认第一个语言做拼写检查, 并按它重填 spellcheck.dictionaries。
-		intl["accept_languages"] = lang
-		delete(intl, "selected_languages")
-		spellcheck["dictionaries"] = []string{lang}
-		jsonObject(prefs, "browser")["enable_spellchecking"] = true
-	}
-	out, err := json.Marshal(prefs)
-	if err != nil {
-		return err
-	}
-	tmp := path + ".czlmail-tmp"
-	if err := os.WriteFile(tmp, out, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
-}
-
-// jsonObject 返回 m[key] 这个 JSON 对象, 没有 (或不是对象) 时新建。
-func jsonObject(m map[string]any, key string) map[string]any {
-	if v, ok := m[key].(map[string]any); ok {
-		return v
-	}
-	v := map[string]any{}
-	m[key] = v
-	return v
 }
