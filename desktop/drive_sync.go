@@ -139,4 +139,5 @@ func (a *App) syncDriveSoon() {
 	a.syncAccountSettingsSoon()
 	a.syncMessageTagsSoon()
 	a.syncSignInsSoon()
+	a.syncSmartFoldersSoon()
 }

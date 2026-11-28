@@ -5,12 +5,28 @@ import { useI18n } from "@/components/locale-provider";
 
 import { Fragment, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { ChevronDown, ExternalLink, MailWarning, Plus, UserRound } from "lucide-react";
+import { ChevronDown, ExternalLink, FolderSearch, MailWarning, Pencil, Plus, Trash2, UserRound } from "lucide-react";
 
 import { accountColor, accountName, signInLookKey, type AccountLooks } from "@/lib/account-looks";
 import type { FavoriteFolder } from "@/lib/favorite-folders";
 
 import { FolderDialog, type FolderAction } from "@/components/folder-dialog";
+import { SmartFolderDialog } from "@/components/smart-folder-dialog";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import {
+  emptySmartFolder,
+  smartView,
+  useSmartFolderCounts,
+  viewForAccount,
+  type SmartFolder,
+} from "@/lib/smart-folders";
 
 import {
   FolderButton,
@@ -53,6 +69,8 @@ interface Props {
   looks: AccountLooks;
   /** 「收藏」里的文件夹 (右键文件夹收藏), 按收藏的先后。 */
   favorites: FavoriteFolder[];
+  /** 筛选文件夹, 按新建的先后; 列在「全部账号」的「未读」下面。 */
+  smartFolders: SmartFolder[];
 }
 
 const COLLAPSE_KEY = "czlmail.sidebar.collapsed";
@@ -83,10 +101,14 @@ export function MailSidebar({
   onDropEmails,
   looks,
   favorites,
+  smartFolders,
 }: Props) {
   useI18n();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [folderAction, setFolderAction] = useState<FolderAction | null>(null);
+  const [smartEdit, setSmartEdit] = useState<SmartFolder | null>(null);
+  // 筛选文件夹的邮件数: 文件夹的未读数变了 (同步到了新邮件、标了已读) 就重数。
+  const smartCounts = useSmartFolderCounts(smartFolders, mailboxesByAccount);
   // 从「收藏」或「全部账号」按账号展开的行打开的文件夹 (key = 账号/文件夹, from = 哪一节的行,
   // sections = 那一行要展开着才看得到的节): 只高亮那一行, 别处的同一个文件夹不再同时高亮。
   const [via, setVia] = useState<{ key: string; from: string; sections: string[] } | null>(null);
@@ -266,6 +288,9 @@ export function MailSidebar({
     unread: number;
     badge: boolean;
     perAccount?: { account: Account; box: Mailbox }[];
+    /** 「未读」与筛选文件夹按账号展开的行: 点了打开只含这个账号的同一视图。 */
+    accountRows?: { account: Account; count: number }[];
+    smart?: SmartFolder;
   }[] = KIND_ORDER.filter((kind) => unifiedBoxes.some((m) => m.kind === kind)).map((kind) => ({
     view: kind,
     // 展开后每个账号的同类文件夹一行, 点了直接进那个账号的文件夹。
@@ -278,16 +303,73 @@ export function MailSidebar({
     unread: unreadOf(kind),
     badge: kind === "inbox",
   }));
-  if (unifiedRows.length > 0) {
-    unifiedRows.splice(unifiedRows[0].view === "inbox" ? 1 : 0, 0, {
-      view: UNIFIED_UNREAD,
-      icon: MailWarning,
+  const accountUnread = (acc: string) =>
+    (mailboxesByAccount[acc] ?? []).filter((m) => !UNREAD_SKIP_KINDS.includes(m.kind)).reduce((n, m) => n + m.unreadEmails, 0);
+  // 筛选文件夹: 条件里有「未读」时数未读 (红色角标, 同「未读」), 否则数全部 (灰字, 同草稿)。
+  const smartRows = smartFolders.map((f) => {
+    const count = smartCounts[f.id];
+    const num = (c?: { total: number; unread: number }) => (c ? (f.unread ? c.unread : c.total) : 0);
+    // 选了账号的只列那几个, 否则同「全部账号」。
+    const scoped = f.accounts?.length || f.accountsElsewhere ? accounts.filter((a) => f.accounts?.includes(a.id)) : unifiedAccounts;
+    return {
+      view: smartView(f.id),
+      icon: FolderSearch,
       color: "text-folder-inbox",
-      label: t("未读"),
-      unread: countedBoxes.filter((m) => !UNREAD_SKIP_KINDS.includes(m.kind)).reduce((n, m) => n + m.unreadEmails, 0),
-      badge: true,
-    });
+      label: f.name,
+      unread: num(count),
+      badge: f.unread,
+      accountRows: scoped.map((account) => ({ account, count: num(count?.accounts?.[account.id]) })),
+      smart: f,
+    };
+  });
+  if (unifiedRows.length > 0) {
+    unifiedRows.splice(
+      unifiedRows[0].view === "inbox" ? 1 : 0,
+      0,
+      {
+        view: UNIFIED_UNREAD,
+        icon: MailWarning,
+        color: "text-folder-inbox",
+        label: t("未读"),
+        unread: countedBoxes.filter((m) => !UNREAD_SKIP_KINDS.includes(m.kind)).reduce((n, m) => n + m.unreadEmails, 0),
+        badge: true,
+        accountRows: unifiedAccounts
+          .filter((a) => (mailboxesByAccount[a.id] ?? []).length > 0)
+          .map((account) => ({ account, count: accountUnread(account.id) })),
+      },
+      ...smartRows,
+    );
   }
+
+  async function deleteSmart(f: SmartFolder) {
+    if (!window.confirm(t("删除筛选文件夹「{0}」？其中的邮件不受影响。", f.name))) return;
+    try {
+      await api.deleteSmartFolder(f.id);
+    } catch (err) {
+      toast.error(errorMessage(err));
+    }
+  }
+
+  /** 筛选文件夹那一行的右键菜单。 */
+  const smartMenu = (f: SmartFolder, row: React.ReactNode) => (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
+      <ContextMenuContent className="w-56">
+        <ContextMenuLabel className="truncate" title={f.name}>
+          {f.name}
+        </ContextMenuLabel>
+        <ContextMenuSeparator />
+        <ContextMenuItem onSelect={() => setSmartEdit(f)}>
+          <Pencil className="size-4" />
+          {t("编辑筛选文件夹…")}
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={() => void deleteSmart(f)} className="text-destructive focus:text-destructive">
+          <Trash2 className="size-4" />
+          {t("删除筛选文件夹")}
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  );
 
   // 共享邮箱, 以及同一登录下的多个个人账号 (czlmail 网关每个上游邮箱一个): 每个账号一行可折叠的标题。
   // 网关账号的标题带上游类型图标与状态 (需要重新授权 / 连不上 / 同步中), 能重新授权时旁边给网关后台入口。
@@ -444,11 +526,13 @@ export function MailSidebar({
           open={!isCollapsed("unified")}
           onToggle={() => toggle("unified")}
           unread={sumInbox(accounts)}
+          onAdd={() => setSmartEdit(emptySmartFolder())}
+          addLabel={t("新建筛选文件夹")}
         >
           <nav className="flex flex-col gap-0.5" aria-label={t("全部账号")}>
             {unifiedRows.map((row) => {
               const key = `unified:${row.view}`;
-              const expandable = (row.perAccount?.length ?? 0) > 1;
+              const expandable = (row.perAccount?.length ?? 0) > 1 || (row.accountRows?.length ?? 0) > 1;
               const open = expandable && !isCollapsed(key);
               return (
                 <div key={row.view} className="flex flex-col gap-0.5">
@@ -467,18 +551,44 @@ export function MailSidebar({
                     ) : (
                       <span aria-hidden className="w-4 shrink-0" />
                     )}
-                    <FolderButton
-                      icon={row.icon}
-                      color={row.color}
-                      label={row.label}
-                      selected={unified === row.view}
-                      onClick={() => onSelectUnified(row.view)}
-                      unread={row.unread}
-                      badge={row.badge}
-                    />
+                    {(() => {
+                      const button = (
+                        <FolderButton
+                          icon={row.icon}
+                          color={row.color}
+                          label={row.label}
+                          selected={unified === row.view}
+                          onClick={() => onSelectUnified(row.view)}
+                          unread={row.unread}
+                          badge={row.badge}
+                        />
+                      );
+                      return row.smart ? smartMenu(row.smart, button) : button;
+                    })()}
                   </div>
                   {open &&
-                    row.perAccount!.map(({ account, box }) => {
+                    row.accountRows?.map(({ account, count }) => {
+                      const view = viewForAccount(row.view, account.id);
+                      return (
+                        <div key={view} className="flex items-center">
+                          <span aria-hidden className="w-4 shrink-0" />
+                          <FolderButton
+                            icon={row.icon}
+                            depth={1}
+                            leading={<AccountDot color={accountColor(account.id, looks)} slot />}
+                            label={accountName(account, looks)}
+                            title={`${row.label} · ${account.name}`}
+                            selected={unified === view}
+                            onClick={() => onSelectUnified(view)}
+                            unread={count}
+                            badge={row.badge}
+                            quiet={muted.has(account.id)}
+                          />
+                        </div>
+                      );
+                    })}
+                  {open &&
+                    row.perAccount?.map(({ account, box }) => {
                       const key = `${account.id}/${box.id}`;
                       return (
                         <div key={key} className="flex items-center">
@@ -516,6 +626,36 @@ export function MailSidebar({
                 </div>
               );
             })}
+          </nav>
+        </Section>
+      )}
+
+      {/* 只有一个账号时没有「全部账号」, 筛选文件夹单独一节。 */}
+      {!hasUnified && smartRows.length > 0 && (
+        <Section
+          title={t("筛选文件夹")}
+          open={!isCollapsed("smart")}
+          onToggle={() => toggle("smart")}
+          onAdd={() => setSmartEdit(emptySmartFolder())}
+          addLabel={t("新建筛选文件夹")}
+        >
+          <nav className="flex flex-col gap-0.5" aria-label={t("筛选文件夹")}>
+            {smartRows.map((row) => (
+              <div key={row.view}>
+                {smartMenu(
+                  row.smart,
+                  <FolderButton
+                    icon={row.icon}
+                    color={row.color}
+                    label={row.label}
+                    selected={unified === row.view}
+                    onClick={() => onSelectUnified(row.view)}
+                    unread={row.unread}
+                    badge={row.badge}
+                  />,
+                )}
+              </div>
+            ))}
           </nav>
         </Section>
       )}
@@ -565,6 +705,13 @@ export function MailSidebar({
         onClose={() => setFolderAction(null)}
         onDone={onMailboxesChanged}
       />
+      <SmartFolderDialog
+        folder={smartEdit}
+        accounts={accounts}
+        onClose={() => setSmartEdit(null)}
+        // 新建的筛选文件夹直接打开。
+        onSaved={(f) => !smartEdit?.id && onSelectUnified(smartView(f.id))}
+      />
     </div>
   );
 }
@@ -593,6 +740,7 @@ function Section({
   open,
   onToggle,
   onAdd,
+  addLabel,
   unread = 0,
   headerProps,
   children,
@@ -603,6 +751,8 @@ function Section({
   open: boolean;
   onToggle: () => void;
   onAdd?: () => void;
+  /** 「+」按钮的说明, 默认「新建文件夹」。 */
+  addLabel?: string;
   /** 折叠时显示的收件箱未读数。 */
   unread?: number;
   /** 标题按钮上的额外属性 (拖动邮件时悬停展开)。 */
@@ -629,8 +779,8 @@ function Section({
           <button
             type="button"
             onClick={onAdd}
-            aria-label={t("新建文件夹")}
-            title={t("新建文件夹")}
+            aria-label={addLabel ?? t("新建文件夹")}
+            title={addLabel ?? t("新建文件夹")}
             className="text-muted-foreground hover:bg-secondary hover:text-foreground rounded-sm p-1 opacity-0 group-hover/section:opacity-100 focus-visible:opacity-100"
           >
             <Plus className="size-3.5" />

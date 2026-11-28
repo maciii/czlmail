@@ -21,6 +21,7 @@ import {
   IdCard,
   Info,
   Keyboard,
+  FolderSearch,
   ListFilter,
   Loader2,
   MessageSquare,
@@ -78,6 +79,7 @@ import { AISection } from "@/components/settings/ai-section";
 import { FiltersSection } from "@/components/settings/filters-section";
 import { ShortcutsSection } from "@/components/settings/shortcuts-section";
 import { TagsSection } from "@/components/settings/tags-section";
+import { SmartFoldersSection } from "@/components/settings/smart-folders-section";
 import {
   AppearanceSection,
   ComposeSection,
@@ -110,6 +112,7 @@ type Section =
   | "templates"
   | "folders"
   | "tags"
+  | "smartFolders"
   | "scheduled"
   | "privacy"
   | "calendars"
@@ -161,6 +164,7 @@ const allGroups: () => ({ title: string; items: { id: Section; label: string; ic
       { id: "templates", label: t("邮件模板"), icon: FileText },
       { id: "folders", label: tContext("heading", "文件夹"), icon: Folder },
       { id: "tags", label: t("标签"), icon: Tag },
+      { id: "smartFolders", label: t("筛选文件夹"), icon: FolderSearch },
       { id: "scheduled", label: tContext("heading", "定时发送"), icon: CalendarClock },
       { id: "privacy", label: t("内容与发件人"), icon: ShieldCheck },
     ],
@@ -280,6 +284,7 @@ export function SettingsShell({ active, onSignedOut }: { active: boolean; onSign
           {current === "templates" && <TemplateSection active={on("templates")} />}
           {current === "folders" && <FoldersSection active={on("folders")} />}
           {current === "tags" && <TagsSection active={on("tags")} />}
+          {current === "smartFolders" && <SmartFoldersSection active={on("smartFolders")} />}
           {current === "scheduled" && <ScheduledSection active={on("scheduled")} />}
           {current === "privacy" && <PrivacySection active={on("privacy")} />}
           {current === "calendars" && <CalendarsSection active={on("calendars")} />}
