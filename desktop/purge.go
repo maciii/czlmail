@@ -14,6 +14,7 @@ import (
 	"github.com/woodchen-ink/czlmail/desktop/internal/config"
 	"github.com/woodchen-ink/czlmail/desktop/internal/keychain"
 	"github.com/woodchen-ink/czlmail/desktop/internal/platform"
+	"github.com/woodchen-ink/czlmail/desktop/notify"
 )
 
 // 删除本机的全部数据: 缓存库、配置、日志、界面偏好(WebView2 数据)、已打开的附件与网盘文件、
@@ -61,9 +62,14 @@ func runPurge(args []string) int {
 func purgeAll() error {
 	var errs []error
 
-	// 开发实例(CZLMAIL_INSTANCE)与正式版共用系统钥匙串和注册表, 只删它自己的目录。
+	// 通知登记按实例分开 (AppUserModelID 与唤起类 ID 各自一份), 开发实例也只删自己的那份。
+	if err := notify.Unregister(config.InstanceID()); err != nil {
+		errs = append(errs, err)
+	}
+
+	// 开发实例(CZLMAIL_INSTANCE)与正式版共用系统钥匙串和其余注册表项, 只删它自己的目录。
 	if os.Getenv("CZLMAIL_INSTANCE") != "" {
-		return errors.Join(removeDirs()...)
+		return errors.Join(append(errs, removeDirs()...)...)
 	}
 
 	// 凭据的条目名取决于配置里的登录方式, 必须先读配置再删目录。每个登录各有一份。

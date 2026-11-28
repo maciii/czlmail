@@ -36,7 +36,7 @@ func Activated(actionID string) {
 
 type iosNotifier struct{}
 
-func New(context.Context) (Notifier, error) { return iosNotifier{}, nil }
+func New(context.Context, App) (Notifier, error) { return iosNotifier{}, nil }
 
 func (iosNotifier) Notify(_ context.Context, n Notification) error {
 	native.mu.Lock()
@@ -55,3 +55,6 @@ func (iosNotifier) OnActivated(fn func(string)) {
 }
 
 func (iosNotifier) Close() error { return nil }
+
+// Unregister 只在 Windows 上有事可做 (通知登记在注册表里)。
+func Unregister(string) error { return nil }
