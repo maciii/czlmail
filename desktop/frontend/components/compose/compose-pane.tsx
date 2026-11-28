@@ -774,6 +774,7 @@ export function ComposePane({ accountId, draft, onClose, onSent, leaveRef, sourc
             content={draft.html}
             placeholder={t("正文")}
             className="shrink-0"
+            stickyToolbar
             onReady={(e) => (editorRef.current = e)}
             autoFocus={initialFocus === "body"}
             onChange={(v) => {
