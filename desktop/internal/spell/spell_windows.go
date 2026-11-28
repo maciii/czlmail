@@ -251,7 +251,7 @@ func Suggest(word string, langs []string, limit int) ([]string, error) {
 			}
 			perLang = append(perLang, readEnumString(enum, limit))
 		}
-		out = MergeSuggestions(perLang, limit)
+		out = MergeSuggestions(ByCloseness(word, perLang), limit)
 	})
 	return out, err
 }

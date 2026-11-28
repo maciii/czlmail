@@ -28,3 +28,20 @@ func TestMergeSuggestionsInterleaves(t *testing.T) {
 		t.Errorf("MergeSuggestions = %v, want %v", got, want)
 	}
 }
+
+func TestByClosenessPutsTheNearestLanguageFirst(t *testing.T) {
+	cs := []string{"spalin", "spaliny"}
+	en := []string{"spelling", "spieling"}
+	got := MergeSuggestions(ByCloseness("speling", [][]string{cs, en}), 4)
+	want := []string{"spelling", "spalin", "spieling", "spaliny"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("speling = %v, want %v", got, want)
+	}
+	got = MergeSuggestions(ByCloseness("kun", [][]string{{"kino", "kupon"}, {"kůň", "kuna"}}), 2)
+	if want := []string{"kůň", "kino"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("kun = %v, want %v", got, want)
+	}
+	if got := ByCloseness("x", [][]string{nil, {"y"}}); len(got[0]) != 1 {
+		t.Errorf("an empty list must go last: %v", got)
+	}
+}
