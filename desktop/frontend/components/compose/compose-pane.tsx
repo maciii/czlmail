@@ -1,6 +1,6 @@
 "use client";
 
-import { dateLocale, t } from "@/lib/i18n";
+import { dateLocale, getLocale, t } from "@/lib/i18n";
 import { useI18n } from "@/components/locale-provider";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -24,6 +24,8 @@ import {
 import { toast } from "sonner";
 
 import { RichEditor } from "@/components/compose/rich-editor";
+import { fixKeyboardLayout, isKeyboardFixShortcut, KeyboardFixButton, KeyboardFixHint } from "@/components/compose/keyboard-fix";
+import { czechLayoutSetting } from "@/lib/keyboard-layout";
 import { RecipientInput } from "@/components/recipient-input";
 import {
   AlertDialog,
@@ -177,6 +179,10 @@ export function ComposePane({ accountId, draft, onClose, onSent, leaveRef, sourc
   const [intent, setIntent] = useState("");
 
   const editorRef = useRef<Editor | null>(null);
+  // 同一个编辑器再存一份 state, 给按它渲染的部分 (键盘布局纠正) 用。
+  const [editor, setEditor] = useState<Editor | null>(null);
+  // 键盘布局纠正只对捷克语用户有用, 设置里关着 (非捷克语界面的默认) 时不出现。每次渲染读一次, 设置改了下次渲染生效。
+  const keyboardFix = czechLayoutSetting(getLocale()) !== "off";
   // 打开写信面板时光标落在第一个空着的地方, 不用先点鼠标: 新邮件、转发 → 收件人,
   // 从通讯录写信 → 主题, 回复 → 正文开头 (引用在下面)。
   const initialFocus = !draft.to.trim() ? "to" : !draft.subject.trim() ? "subject" : "body";
@@ -678,6 +684,11 @@ export function ComposePane({ accountId, draft, onClose, onSent, leaveRef, sourc
       }}
       onDrop={() => setDragging(false)}
       onKeyDown={(e) => {
+        if (keyboardFix && editor && isKeyboardFixShortcut(e.nativeEvent) && editor.view.dom.contains(e.target as Node)) {
+          e.preventDefault();
+          fixKeyboardLayout(editor);
+          return;
+        }
         // 只认面板里的按键: 弹窗经 portal 渲染, React 事件也会冒泡到这里。
         if (!isSendShortcut(e.nativeEvent) || !rootRef.current?.contains(e.target as Node)) return;
         e.preventDefault();
@@ -798,14 +809,24 @@ export function ComposePane({ accountId, draft, onClose, onSent, leaveRef, sourc
             placeholder={t("正文")}
             className="shrink-0"
             stickyToolbar
-            onReady={(e) => (editorRef.current = e)}
+            onReady={(e) => {
+              editorRef.current = e;
+              setEditor(e);
+            }}
             autoFocus={initialFocus === "body"}
             onChange={(v) => {
               setHtml(v);
               markDirty();
             }}
-            toolbarExtra={aiMenu}
+            toolbarExtra={
+              <>
+                {keyboardFix && <KeyboardFixButton editor={editor} />}
+                {aiMenu}
+              </>
+            }
           />
+
+          {keyboardFix && <KeyboardFixHint editor={editor} />}
 
           {aiPanel && (
             <div className="border-border bg-secondary mx-4 mb-3 flex flex-col gap-2 rounded-md border p-3">

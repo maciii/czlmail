@@ -1,6 +1,6 @@
 "use client";
 
-import { t } from "@/lib/i18n";
+import { getLocale, t } from "@/lib/i18n";
 import { useI18n } from "@/components/locale-provider";
 
 import { useEffect, useState } from "react";
@@ -19,6 +19,7 @@ import { isNative } from "@/lib/native-bridge";
 import { clearAvatarCache } from "@/lib/avatar-cache";
 import { primaryPersonal, useAccounts as useAllAccounts } from "@/lib/account-features";
 import { accountName, useAccountLooks } from "@/lib/account-looks";
+import { czechLayoutSetting, setCzechLayout, type CzechLayoutSetting } from "@/lib/keyboard-layout";
 
 export function AppearanceSection({ active }: { active: boolean }) {
   useI18n();
@@ -308,6 +309,8 @@ export function ComposeSection({ active }: { active: boolean }) {
             onCheckedChange={(on) => save({ readReceiptDefault: on })}
           />
         </Row>
+        <Divider />
+        <CzechKeyboardRow />
       </Card>
       <SectionTitle title={t("发送前检查")} small />
       <Card>
@@ -324,5 +327,28 @@ export function ComposeSection({ active }: { active: boolean }) {
         </Row>
       </Card>
     </>
+  );
+}
+
+/** 写信时纠正用错布局打的字 (Ctrl+Shift+K) 按哪种捷克语布局换算; 关闭时编辑器里不出现。只存这台机器。 */
+function CzechKeyboardRow() {
+  useI18n();
+  const [layout, setLayout] = useState<CzechLayoutSetting>(() => czechLayoutSetting(getLocale()));
+  return (
+    <Row title={t("捷克语键盘")} desc={t("开着英文布局打了捷克语时，用 Ctrl+Shift+K 换成捷克语；选择你用的捷克语布局")}>
+      <OptionSelect
+        value={layout}
+        onChange={(v) => {
+          const next: CzechLayoutSetting = v === "qwerty" || v === "qwertz" ? v : "off";
+          setCzechLayout(next);
+          setLayout(next);
+        }}
+        options={[
+          ["off", t("不使用")],
+          ["qwertz", "QWERTZ"],
+          ["qwerty", "QWERTY"],
+        ]}
+      />
+    </Row>
   );
 }
