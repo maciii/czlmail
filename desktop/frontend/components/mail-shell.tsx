@@ -1653,15 +1653,18 @@ export function MailShell({ active, onSignedOut }: { active: boolean; onSignedOu
   }
 
   /**
-   * 统一视图与搜索结果里标出邮件属于哪个邮箱。主登录的个人邮箱是绝大多数, 不标;
+   * 统一视图与搜索结果里标出邮件属于哪个邮箱。主登录的个人邮箱是它唯一的个人邮箱时占绝大多数, 不标;
    * 共享邮箱与其它登录的邮箱才标, 列表里放用户起的名字, 没起就放 @ 前面一段, 完整地址在悬停提示里;
-   * 主登录的个人邮箱起了名字也不标, 否则满屏都是同一个标签。设了颜色的账号 (含主登录的) 另在行左边画一条细线。
+   * 主登录的个人邮箱起了名字也不标, 否则满屏都是同一个标签。有别的个人邮箱 (其它登录、网关) 时它就不再是
+   * 绝大多数, 也标, 否则只有它的邮件没有名字, 要靠颜色线猜。设了颜色的账号 (含主登录的) 另在行左边画一条细线。
    */
+  const personalCount = accounts.filter((a) => a.isPersonal).length;
   function accountOf(email: EmailSummary): { label?: string; title: string; color?: string } | null {
     const acc = accounts.find((a) => a.id === email.accountId);
     if (!acc) return null;
     const color = accountColor(acc.id, accountLooks);
-    const tagged = !(acc.isPersonal && !acc.signIn);
+    const onlyPersonal = acc.isPersonal && !acc.signIn && personalCount === 1;
+    const tagged = !onlyPersonal;
     if (!tagged && !color) return null;
     return { label: tagged ? accountLooks[acc.id]?.name || acc.name.split("@")[0] : undefined, title: acc.name, color };
   }
