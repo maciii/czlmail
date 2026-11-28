@@ -37,6 +37,15 @@ export function primaryPersonal(accounts: store.Account[]): store.Account | unde
   return own.find((a) => a.primary) ?? own[0];
 }
 
+/**
+ * 「全部账号」里新写的信用的账号: 设置 → 写信里选的个人邮箱 (还在时), 否则主登录的个人账号。
+ * 账号可以排先后, 列表里第一个个人账号不一定是主登录。
+ */
+export function defaultComposeAccount(accounts: store.Account[], preferred?: string): string {
+  if (preferred && accounts.some((a) => a.id === preferred && a.isPersonal)) return preferred;
+  return (primaryPersonal(accounts) ?? accounts.find((a) => a.isPersonal))?.id ?? "";
+}
+
 /** 设置 → 账户卡片上列出的不支持功能, 按界面上的叫法。 */
 const FEATURE_LABELS: [Feature, () => string][] = [
   ["calendars", () => t("日历")],

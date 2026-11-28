@@ -91,7 +91,7 @@ import {
   type FileNode,
   type PIMChange,
 } from "@/lib/api";
-import { withFeature } from "@/lib/account-features";
+import { primaryPersonal, withFeature } from "@/lib/account-features";
 import { fileSize } from "@/lib/format";
 import { onFileDrop } from "@/lib/file-drop";
 
@@ -150,7 +150,7 @@ export function FilesShell({ active }: { active: boolean }) {
         // 只列服务器公布了文件存储 (FileNode) 的账号。
         const list = withFeature(all ?? [], "files");
         setAccounts(list);
-        const personal = list.find((a) => a.isPersonal) ?? list[0];
+        const personal = primaryPersonal(list) ?? list.find((a) => a.isPersonal) ?? list[0];
         if (personal) setAccountId(personal.id);
       })
       .catch((err) => toast.error(errorMessage(err)));

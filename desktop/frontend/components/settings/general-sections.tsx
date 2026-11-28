@@ -17,6 +17,8 @@ import { api, errorMessage, type Account, type IntegrationStatus } from "@/lib/a
 import { useAppearance, type ThemePreference } from "@/lib/theme";
 import { isNative } from "@/lib/native-bridge";
 import { clearAvatarCache } from "@/lib/avatar-cache";
+import { primaryPersonal, useAccounts as useAllAccounts } from "@/lib/account-features";
+import { accountName, useAccountLooks } from "@/lib/account-looks";
 
 export function AppearanceSection({ active }: { active: boolean }) {
   useI18n();
@@ -264,10 +266,33 @@ export function ReadingSection({ active }: { active: boolean }) {
 export function ComposeSection({ active }: { active: boolean }) {
   useI18n();
   const { settings, save } = useSettings(active);
+  const looks = useAccountLooks();
+  const all = useAllAccounts() ?? [];
+  // 只有一个个人邮箱时没得选, 不显示。
+  const personal = all.filter((a) => a.isPersonal);
+  const primary = primaryPersonal(all);
+  const others = personal.filter((a) => a.id !== primary?.id);
+  const composeDefault = settings?.defaultComposeAccount && others.some((a) => a.id === settings.defaultComposeAccount) ? settings.defaultComposeAccount : "";
   return (
     <>
       <SectionTitle title={t("写信")} desc={t("默认发件身份在「发件身份与签名」里设置。")} />
       <Card>
+        {primary && others.length > 0 && (
+          <>
+            <Row title={t("默认写信账号")} desc={t("在「全部账号」里写新邮件时用的邮箱；在某个邮箱的文件夹里写信时用那个邮箱")}>
+              <OptionSelect
+                value={composeDefault}
+                disabled={!settings}
+                onChange={(v) => save({ defaultComposeAccount: v })}
+                options={[
+                  ["", t("主登录（{0}）", accountName(primary, looks))],
+                  ...others.map((a) => [a.id, accountName(a, looks)] as const),
+                ]}
+              />
+            </Row>
+            <Divider />
+          </>
+        )}
         <Row title={t("签名前加分隔线")} desc={t("在签名前插入标准的 \"-- \" 行，收件方客户端可以识别并折叠签名")}>
           <Switch
             checked={!!settings?.signatureSeparator}

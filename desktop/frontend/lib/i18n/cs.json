@@ -1487,5 +1487,10 @@
   "今天 {0} 到期": "Termín dnes v {0}",
   "找不到这个任务，可能已被删除": "Úkol se nepodařilo najít. Možná byl smazán.",
   "重复": "Opakuje se",
-  "待办|module": "Úkoly"
+  "待办|module": "Úkoly",
+  "拖动左边的手柄调整顺序，侧栏与「全部账号」按这个顺序显示。": " Pořadí změníte přetažením za úchyt vlevo; v tomto pořadí se schránky zobrazují v postranním panelu a ve Všech účtech.",
+  "拖动或按 ↑↓ 调整顺序": "Pořadí změníte přetažením nebo klávesami ↑↓",
+  "默认写信账号": "Výchozí účet pro nové zprávy",
+  "在「全部账号」里写新邮件时用的邮箱；在某个邮箱的文件夹里写信时用那个邮箱": "Schránka, ze které se píše nová zpráva ve Všech účtech. Ve složkách konkrétní schránky se použije ta schránka.",
+  "主登录（{0}）": "Hlavní přihlášení ({0})"
 }

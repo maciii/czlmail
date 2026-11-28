@@ -286,7 +286,7 @@ func (a *App) forgetSignInData(st *store.Store, id string) error {
 	})
 }
 
-// forgetAccountSettings 把 owned 认领的账号从按账号 id 记的设置 (静音、统一视图排除、默认身份) 里去掉。
+// forgetAccountSettings 把 owned 认领的账号从按账号 id 记的设置 (静音、统一视图排除、默认身份、默认写信账号) 里去掉。
 func (a *App) forgetAccountSettings(st *store.Store, owned func(accountID string) bool) error {
 	for _, key := range []string{"mutedMailAccounts", settingUnifiedExcluded} {
 		list := a.accountListSetting(st, key)
@@ -296,6 +296,11 @@ func (a *App) forgetAccountSettings(st *store.Store, owned func(accountID string
 		}
 		raw, _ := json.Marshal(kept)
 		if err := st.SetStringSetting(a.ctx, key, string(raw)); err != nil {
+			return err
+		}
+	}
+	if v, err := st.StringSetting(a.ctx, settingDefaultCompose); err == nil && v != "" && owned(v) {
+		if err := st.SetStringSetting(a.ctx, settingDefaultCompose, ""); err != nil {
 			return err
 		}
 	}

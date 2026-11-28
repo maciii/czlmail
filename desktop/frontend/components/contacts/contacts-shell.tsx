@@ -78,7 +78,7 @@ import {
   type EventOccurrence,
   type PIMChange,
 } from "@/lib/api";
-import { supports, withFeature } from "@/lib/account-features";
+import { primaryPersonal, supports, withFeature } from "@/lib/account-features";
 import { send } from "@/lib/app-bus";
 import { hm, shortDate } from "@/lib/date";
 import { localUrl } from "@/lib/native-bridge";
@@ -224,7 +224,7 @@ export function ContactsShell({ active }: { active: boolean }) {
       const b = books.find((x) => x.accountId === scope.accountId && x.id === scope.bookId);
       if (b && b.name !== TRUSTED) return b;
     }
-    const personal = accounts.find((a) => a.isPersonal)?.id;
+    const personal = primaryPersonal(accounts)?.id;
     return (
       writableBooks.find((b) => b.accountId === personal && b.isDefault) ??
       writableBooks.find((b) => b.accountId === personal) ??
@@ -310,7 +310,7 @@ export function ContactsShell({ active }: { active: boolean }) {
               <UsersRound className="size-4" />
               {t("新建群组")}</DropdownMenuItem>
             <DropdownMenuItem
-              onSelect={() => setBookDialog({ accountId: accounts.find((a) => a.isPersonal)?.id ?? accounts[0]?.id ?? "" })}
+              onSelect={() => setBookDialog({ accountId: primaryPersonal(accounts)?.id ?? accounts[0]?.id ?? "" })}
             >
               <BookPlus className="size-4" />
               {t("新建通讯录")}</DropdownMenuItem>
